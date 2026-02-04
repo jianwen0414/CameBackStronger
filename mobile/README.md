@@ -34,29 +34,22 @@ yarn android
 
 ### iOS
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+> **Important**: iOS development requires macOS and Xcode. See [IOS_SETUP.md](./IOS_SETUP.md) for complete setup instructions.
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+**Quick Start (Mac only):**
 
 ```sh
+# 1. Install Ruby dependencies
 bundle install
-```
 
-Then, and every time you update your native dependencies, run:
+# 2. Install CocoaPods dependencies
+cd ios && bundle exec pod install && cd ..
 
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+# 3. Run on iOS Simulator
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
+
+For detailed iOS setup instructions, troubleshooting, and physical device deployment, see **[IOS_SETUP.md](./IOS_SETUP.md)**.
 
 If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
 

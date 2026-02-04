@@ -1,14 +1,10 @@
 -- ============================================================================
--- NightWalk PostGIS Setup
--- Run this in Supabase SQL Editor to create the required functions
+-- Fix: Cast enum types to TEXT in RPC functions
+-- This fixes the error: "Returned type danger_type does not match expected type text"
+-- Run this in Supabase SQL Editor to update the functions
 -- ============================================================================
 
--- Enable PostGIS extension (should already be enabled in Supabase)
-CREATE EXTENSION IF NOT EXISTS postgis;
-
--- ============================================================================
--- Function: Find immediate dangers within radius
--- ============================================================================
+-- Fix find_immediate_dangers_nearby function
 CREATE OR REPLACE FUNCTION find_immediate_dangers_nearby(
     query_lat DOUBLE PRECISION,
     query_long DOUBLE PRECISION,
@@ -47,9 +43,7 @@ BEGIN
 END;
 $$;
 
--- ============================================================================
--- Function: Find suspicious activities within radius
--- ============================================================================
+-- Fix find_suspicious_nearby function
 CREATE OR REPLACE FUNCTION find_suspicious_nearby(
     query_lat DOUBLE PRECISION,
     query_long DOUBLE PRECISION,
@@ -90,16 +84,10 @@ BEGIN
 END;
 $$;
 
--- ============================================================================
--- Enable Realtime for alerts tables
--- ============================================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE immediate_danger_logs;
-ALTER PUBLICATION supabase_realtime ADD TABLE suspicious_individual_logs;
-
--- ============================================================================
--- Grant execute permissions
--- ============================================================================
+-- Grant execute permissions (if not already granted)
 GRANT EXECUTE ON FUNCTION find_immediate_dangers_nearby TO authenticated;
 GRANT EXECUTE ON FUNCTION find_immediate_dangers_nearby TO service_role;
+GRANT EXECUTE ON FUNCTION find_immediate_dangers_nearby TO anon;
 GRANT EXECUTE ON FUNCTION find_suspicious_nearby TO authenticated;
 GRANT EXECUTE ON FUNCTION find_suspicious_nearby TO service_role;
+GRANT EXECUTE ON FUNCTION find_suspicious_nearby TO anon;

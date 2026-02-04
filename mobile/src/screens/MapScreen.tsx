@@ -12,12 +12,14 @@ import {
     TextInput,
     PermissionsAndroid,
     Platform,
+    Animated,
 } from 'react-native';
-import MapView, { Heatmap, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Heatmap, Polyline, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { MapPin, Navigation, Shield } from 'lucide-react-native';
 import Config from 'react-native-config';
 import Geolocation from '@react-native-community/geolocation';
+// @ts-ignore - Type definitions not available
 import polyline from '@mapbox/polyline';
 import { useAlertStore } from '../store/useAlertStore';
 
@@ -65,18 +67,118 @@ const FAST_ROUTE = [
 
 type RouteType = 'safe' | 'fast' | null;
 
+// Default coordinates constant
+const DEFAULT_COORDS = {
+    latitude: 4.647997024420677,
+    longitude: 101.11118512535789,
+};
+
+// Animated Beacon Component
+function AnimatedBeacon({ hazard }: { hazard: any }) {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const opacityAnim = useRef(new Animated.Value(0.8)).current;
+    
+    useEffect(() => {
+        // Create pulsing animation - subtle pulse for smaller beacons
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1.2,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        
+        // Create opacity animation
+        const opacity = Animated.loop(
+            Animated.sequence([
+                Animated.timing(opacityAnim, {
+                    toValue: 1,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(opacityAnim, {
+                    toValue: 0.6,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        
+        pulse.start();
+        opacity.start();
+        
+        return () => {
+            pulse.stop();
+            opacity.stop();
+        };
+    }, []);
+    
+    return (
+        <Animated.View 
+            style={[
+                styles.beaconContainer,
+                {
+                    transform: [{ scale: pulseAnim }],
+                    opacity: opacityAnim,
+                }
+            ]} 
+            pointerEvents="none"
+        >
+            {/* Pulsing outer ring */}
+            <Animated.View
+                style={[
+                    styles.beaconRing,
+                    hazard.is_immediate ? styles.beaconRingDanger : styles.beaconRingSuspicious,
+                    {
+                        opacity: opacityAnim,
+                        transform: [{ scale: pulseAnim }],
+                    }
+                ]}
+            />
+            {/* Outer glow */}
+            <Animated.View
+                style={[
+                    styles.beaconGlow,
+                    hazard.is_immediate ? styles.beaconGlowDanger : styles.beaconGlowSuspicious,
+                    {
+                        opacity: opacityAnim,
+                    }
+                ]}
+            />
+            {/* Core */}
+            <View
+                style={[
+                    styles.beaconCore,
+                    hazard.is_immediate ? styles.beaconCoreDanger : styles.beaconCoreSuspicious,
+                ]}
+            />
+            {/* Inner highlight */}
+            <View
+                style={[
+                    styles.beaconInner,
+                    hazard.is_immediate ? styles.beaconInnerDanger : styles.beaconInnerSuspicious,
+                ]}
+            />
+        </Animated.View>
+    );
+}
+
 export default function MapScreen() {
     const mapRef = useRef<MapView>(null);
-    const [currentLocation, setCurrentLocation] = useState({
-        latitude: 3.1390,
-        longitude: 101.6869,
-    });
+    const [currentLocation, setCurrentLocation] = useState(DEFAULT_COORDS);
     const [activeRoute, setActiveRoute] = useState<RouteType>(null);
-    const [originLabel, setOriginLabel] = useState('Current Location');
+    const [originLabel, setOriginLabel] = useState('Default Location');
     const [originCoords, setOriginCoords] = useState<{
         latitude: number;
         longitude: number;
-    } | null>(null);
+    } | null>(DEFAULT_COORDS);
     const [originPlaceId, setOriginPlaceId] = useState<string | null>(null);
     const [destinationLabel, setDestinationLabel] = useState('');
     const [destinationCoords, setDestinationCoords] = useState<{
@@ -93,7 +195,7 @@ export default function MapScreen() {
     const [isRouting, setIsRouting] = useState(false);
     const [routeError, setRouteError] = useState<string | null>(null);
 
-    const { nearbyHazards, fetchNearbyHazards, zoneSafety } = useAlertStore();
+    const { nearbyHazards, fetchNearbyHazards, zoneSafety, subscribeToAlerts } = useAlertStore();
     const mapsApiKey = Config.GOOGLE_MAPS_API_KEY || '';
 
     const requestLocationPermission = async () => {
@@ -107,7 +209,13 @@ export default function MapScreen() {
     const refreshCurrentLocation = async () => {
         const hasPermission = await requestLocationPermission();
         if (!hasPermission) {
-            setRouteError('Location permission denied');
+            // If permission denied, use default coordinates
+            setCurrentLocation(DEFAULT_COORDS);
+            fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+            setOriginLabel('Default Location');
+            setOriginCoords(DEFAULT_COORDS);
+            setOriginPlaceId(null);
+            setRouteError('Location permission denied. Using default location.');
             return;
         }
 
@@ -130,16 +238,41 @@ export default function MapScreen() {
             },
             error => {
                 console.error('Location error:', error);
-                setRouteError('Unable to get GPS location. Check device location settings.');
+                // On GPS error, use default coordinates
+                setCurrentLocation(DEFAULT_COORDS);
+                fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+                setOriginLabel('Default Location');
+                setOriginCoords(DEFAULT_COORDS);
+                setOriginPlaceId(null);
+                setRouteError('Unable to get GPS location. Using default location.');
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
         );
     };
 
-    // Get current location
+    // Initialize: Center map and fetch hazards
     useEffect(() => {
-        refreshCurrentLocation();
-    }, [fetchNearbyHazards]);
+        // Center map on default coordinates first
+        mapRef.current?.animateToRegion({
+            latitude: DEFAULT_COORDS.latitude,
+            longitude: DEFAULT_COORDS.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+        });
+        
+        // Fetch hazards for default location immediately
+        fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+        
+        // Subscribe to real-time alerts
+        const unsubscribe = subscribeToAlerts();
+        
+        // Note: GPS location is only fetched when user clicks "Use GPS" button
+        // This prevents automatic override of default location
+        
+        return () => {
+            unsubscribe();
+        };
+    }, []);
 
     // Convert hazards to heatmap points
     const heatmapPoints = nearbyHazards
@@ -151,7 +284,7 @@ export default function MapScreen() {
         }));
 
     const decodePolyline = (encoded: string) =>
-        polyline.decode(encoded).map(point => ({
+        polyline.decode(encoded).map((point: [number, number]) => ({
             latitude: point[0],
             longitude: point[1],
         }));
@@ -246,13 +379,23 @@ export default function MapScreen() {
                 provider={PROVIDER_GOOGLE}
                 customMapStyle={DARK_MAP_STYLE}
                 initialRegion={{
-                    latitude: currentLocation.latitude,
-                    longitude: currentLocation.longitude,
+                    latitude: DEFAULT_COORDS.latitude,
+                    longitude: DEFAULT_COORDS.longitude,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
                 }}
-                showsUserLocation
+                showsUserLocation={false}
                 showsMyLocationButton={false}
+                onUserLocationChange={(e) => {
+                    // Prevent automatic map centering on user location
+                    // Only update currentLocation state, don't move map
+                    if (e.nativeEvent.coordinate) {
+                        setCurrentLocation({
+                            latitude: e.nativeEvent.coordinate.latitude,
+                            longitude: e.nativeEvent.coordinate.longitude,
+                        });
+                    }
+                }}
             >
                 {/* Heatmap Layer */}
                 {heatmapPoints.length > 0 && (
@@ -267,6 +410,44 @@ export default function MapScreen() {
                         }}
                     />
                 )}
+
+                {/* Hazard Markers/Beacons */}
+                {nearbyHazards
+                    .filter(h => {
+                        const lat = h.coordinates?.lat;
+                        const long = h.coordinates?.long;
+                        const isValid = 
+                            typeof lat === 'number' && 
+                            typeof long === 'number' && 
+                            !isNaN(lat) && 
+                            !isNaN(long) &&
+                            lat !== 0 && 
+                            long !== 0;
+                        
+                        if (!isValid) {
+                            console.warn('Hazard missing or invalid coordinates:', h.id, { lat, long, coordinates: h.coordinates });
+                        }
+                        return isValid;
+                    })
+                    .map(hazard => {
+                        const lat = hazard.coordinates!.lat;
+                        const long = hazard.coordinates!.long;
+                        return (
+                            <Marker
+                                key={hazard.id}
+                                coordinate={{
+                                    latitude: lat,
+                                    longitude: long,
+                                }}
+                                anchor={{ x: 0.5, y: 0.5 }}
+                                tracksViewChanges={true}
+                                title={hazard.is_immediate ? `Danger: ${hazard.type}` : 'Suspicious Activity'}
+                                description={`Detected at ${new Date(hazard.detected_at).toLocaleTimeString()}`}
+                            >
+                                <AnimatedBeacon hazard={hazard} />
+                            </Marker>
+                        );
+                    })}
 
                 {/* Safe Route (Green) */}
                 {activeRoute === 'safe' && safestRoute && (
@@ -296,9 +477,26 @@ export default function MapScreen() {
                     </Text>
                 </View>
                 <View style={styles.hazardCount}>
-                    <Text style={styles.hazardCountText}>{nearbyHazards.length} hazards nearby</Text>
+                    <Text style={styles.hazardCountText}>
+                        {nearbyHazards.length} {nearbyHazards.length === 1 ? 'hazard' : 'hazards'} nearby
+                    </Text>
                 </View>
             </View>
+            
+            {/* Debug info - Remove in production */}
+            {__DEV__ && (
+                <View style={styles.debugPanel}>
+                    <Text style={styles.debugText}>
+                        Hazards: {nearbyHazards.length}
+                    </Text>
+                    <Text style={styles.debugText}>
+                        With Coords: {nearbyHazards.filter(h => h.coordinates?.lat && h.coordinates?.long).length}
+                    </Text>
+                    <Text style={styles.debugText}>
+                        Origin: {originCoords ? `${originCoords.latitude.toFixed(4)}, ${originCoords.longitude.toFixed(4)}` : 'null'}
+                    </Text>
+                </View>
+            )}
 
             {/* Navigation Controller */}
             <View style={styles.navPanel}>
@@ -330,12 +528,12 @@ export default function MapScreen() {
                                 setOriginPlaceId(details?.place_id || null);
                             }}
                             fetchDetails
-                            fields={['geometry', 'place_id', 'formatted_address']}
+                            fields={['geometry', 'place_id', 'formatted_address'] as any}
                             enablePoweredByContainer={false}
                             debounce={250}
                             textInputProps={{
-                                value: originLabel,
-                                onChangeText: text => setOriginLabel(text),
+                                value: originLabel || '',
+                                onChangeText: (text: string) => setOriginLabel(text),
                             }}
                         />
                         <TouchableOpacity
@@ -373,7 +571,7 @@ export default function MapScreen() {
                             setDestinationPlaceId(details?.place_id || null);
                         }}
                         fetchDetails
-                        fields={['geometry', 'place_id', 'formatted_address']}
+                        fields={['geometry', 'place_id', 'formatted_address'] as any}
                         enablePoweredByContainer={false}
                         debounce={250}
                     />
@@ -426,11 +624,19 @@ export default function MapScreen() {
             <TouchableOpacity
                 style={styles.centerButton}
                 onPress={() => {
+                    // Center on current location if available, otherwise default coordinates
+                    const centerCoords = currentLocation.latitude && currentLocation.longitude
+                        ? currentLocation
+                        : DEFAULT_COORDS;
+                    
                     mapRef.current?.animateToRegion({
-                        ...currentLocation,
+                        ...centerCoords,
                         latitudeDelta: 0.01,
                         longitudeDelta: 0.01,
                     });
+                    
+                    // Refresh hazards for the centered location
+                    fetchNearbyHazards(centerCoords.latitude, centerCoords.longitude, 1000);
                 }}
             >
                 <MapPin size={20} color="#00f5ff" />
@@ -671,5 +877,126 @@ const styles = StyleSheet.create({
         color: '#606070',
         fontSize: 8,
         fontFamily: 'monospace',
+    },
+    // Beacon Styles - Compact and precise
+    beaconContainer: {
+        width: 32,
+        height: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    beaconRing: {
+        position: 'absolute',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        borderWidth: 2,
+        opacity: 0.6,
+    },
+    beaconRingDanger: {
+        borderColor: '#ff0040',
+        backgroundColor: 'transparent',
+        shadowColor: '#ff0040',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    beaconRingSuspicious: {
+        borderColor: '#ffcc00',
+        backgroundColor: 'transparent',
+        shadowColor: '#ffcc00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 7,
+        elevation: 7,
+    },
+    beaconGlow: {
+        position: 'absolute',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        opacity: 0.8,
+    },
+    beaconGlowDanger: {
+        backgroundColor: '#ff0040',
+        shadowColor: '#ff0040',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    beaconGlowSuspicious: {
+        backgroundColor: '#ffcc00',
+        shadowColor: '#ffcc00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    beaconCore: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        borderWidth: 2,
+        zIndex: 2,
+    },
+    beaconCoreDanger: {
+        backgroundColor: '#ff0040',
+        borderColor: '#ff6666',
+        shadowColor: '#ff0040',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    beaconCoreSuspicious: {
+        backgroundColor: '#ffcc00',
+        borderColor: '#ffdd44',
+        shadowColor: '#ffcc00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+        elevation: 6,
+    },
+    beaconInner: {
+        position: 'absolute',
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        zIndex: 3,
+    },
+    beaconInnerDanger: {
+        backgroundColor: '#ffffff',
+        shadowColor: '#ff0040',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    beaconInnerSuspicious: {
+        backgroundColor: '#ffffff',
+        shadowColor: '#ffcc00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+        elevation: 5,
+    },
+    // Debug panel (development only)
+    debugPanel: {
+        position: 'absolute',
+        bottom: 250,
+        left: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 0, 64, 0.5)',
+    },
+    debugText: {
+        color: '#ff0040',
+        fontSize: 10,
+        fontFamily: 'monospace',
+        marginBottom: 2,
     },
 });

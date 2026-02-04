@@ -48,7 +48,7 @@ export default function ScannerScreen() {
 
   const handleScan = () => {
     // Mock scan - fetch nearby hazards (you can use actual geolocation here)
-    fetchNearbyHazards(3.1390, 101.6869, 1000);
+    fetchNearbyHazards(4.647997024420677, 101.11118512535789, 1000);
   };
 
   return (

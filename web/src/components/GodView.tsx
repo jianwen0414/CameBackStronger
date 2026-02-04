@@ -11,8 +11,8 @@ import type { ImmediateDanger, SuspiciousLog } from '../lib/supabase';
 
 // Initial view state - User specified location
 const INITIAL_VIEW_STATE: MapViewState = {
-    longitude: 101.653568,
-    latitude: 3.120503,
+    longitude: 101.11118512535789,
+    latitude: 4.647997024420677,
     zoom: 17,
     pitch: 45,
     bearing: 0
@@ -42,13 +42,31 @@ function DangerBeacon({
         <div
             className="map-beacon map-beacon--danger"
             onClick={onClick}
+            title={`${activityType.toUpperCase()} - Click for details`}
         >
+            {/* Outer glow layers */}
             <div className="beacon-glow" />
+            <div className="beacon-glow" style={{ animationDelay: '1s' }} />
+            
+            {/* Pulsing rings */}
             <div className="beacon-ring" />
             <div className="beacon-ring" />
             <div className="beacon-ring" />
-            <div className="beacon-core" />
+            
+            {/* Vertical light beam */}
             <div className="beacon-beam" />
+            
+            {/* Core with inner glow */}
+            <div className="beacon-core" />
+            <div className="beacon-core-inner" />
+            
+            {/* Sparkle particles */}
+            <div className="beacon-sparkle" style={{ top: '20%', left: '20%', animationDelay: '0s' }} />
+            <div className="beacon-sparkle" style={{ top: '30%', right: '25%', animationDelay: '0.5s' }} />
+            <div className="beacon-sparkle" style={{ bottom: '25%', left: '30%', animationDelay: '1s' }} />
+            <div className="beacon-sparkle" style={{ bottom: '20%', right: '20%', animationDelay: '1.5s' }} />
+            
+            {/* Label */}
             <div className="map-beacon-label">
                 ⚠ {activityType.toUpperCase()}
             </div>
@@ -68,11 +86,26 @@ function SuspiciousBeacon({
         <div
             className="map-beacon map-beacon--suspicious"
             onClick={onClick}
+            title="Suspicious Activity - Click for details"
         >
+            {/* Outer glow layers */}
             <div className="beacon-glow" />
+            <div className="beacon-glow" style={{ animationDelay: '1.25s' }} />
+            
+            {/* Pulsing rings */}
             <div className="beacon-ring" />
             <div className="beacon-ring" />
+            
+            {/* Core with inner glow */}
             <div className="beacon-core" />
+            <div className="beacon-core-inner" />
+            
+            {/* Sparkle particles */}
+            <div className="beacon-sparkle" style={{ top: '25%', left: '25%', animationDelay: '0s' }} />
+            <div className="beacon-sparkle" style={{ top: '30%', right: '30%', animationDelay: '0.7s' }} />
+            <div className="beacon-sparkle" style={{ bottom: '30%', left: '25%', animationDelay: '1.4s' }} />
+            
+            {/* Label */}
             <div className="map-beacon-label">
                 👁 SUSPICIOUS
             </div>
@@ -171,7 +204,13 @@ export default function GodView({ onAlertClick }: GodViewProps) {
 
                             {/* Danger Beacons */}
                             {immediateDangers
-                                .filter(d => d.lat && d.long)
+                                .filter(d => {
+                                    const hasCoords = d.lat && d.long;
+                                    if (!hasCoords) {
+                                        console.warn('Danger missing coordinates:', d.id, 'lat:', d.lat, 'long:', d.long, 'coordinates:', d.coordinates);
+                                    }
+                                    return hasCoords;
+                                })
                                 .map(danger => {
                                     const [x, y] = viewport.project([danger.long!, danger.lat!]);
                                     return (
@@ -195,7 +234,13 @@ export default function GodView({ onAlertClick }: GodViewProps) {
 
                             {/* Suspicious Beacons */}
                             {suspiciousLogs
-                                .filter(s => s.lat && s.long)
+                                .filter(s => {
+                                    const hasCoords = s.lat && s.long;
+                                    if (!hasCoords) {
+                                        console.warn('Suspicious missing coordinates:', s.id, 'lat:', s.lat, 'long:', s.long, 'coordinates:', s.coordinates);
+                                    }
+                                    return hasCoords;
+                                })
                                 .map(suspicious => {
                                     const [x, y] = viewport.project([suspicious.long!, suspicious.lat!]);
                                     return (

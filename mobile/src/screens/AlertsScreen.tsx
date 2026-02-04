@@ -29,19 +29,29 @@ export default function AlertsScreen() {
 
         try {
             // Fetch immediate dangers
-            const { data: dangers } = await supabase
+            const { data: dangers, error: dangerError } = await supabase
                 .from('immediate_danger_logs')
                 .select('*')
                 .eq('is_active', true)
                 .order('detected_at', { ascending: false })
                 .limit(50);
 
+            if (dangerError) {
+                console.error('Error fetching immediate dangers:', dangerError);
+                throw dangerError;
+            }
+
             // Fetch suspicious logs
-            const { data: suspicious } = await supabase
+            const { data: suspicious, error: suspiciousError } = await supabase
                 .from('suspicious_individual_logs')
                 .select('*')
                 .order('detected_at', { ascending: false })
                 .limit(50);
+
+            if (suspiciousError) {
+                console.error('Error fetching suspicious logs:', suspiciousError);
+                throw suspiciousError;
+            }
 
             const allAlerts: AlertItem[] = [
                 ...(dangers || []).map(d => ({ ...d, alertType: 'immediate' as const })),
@@ -54,6 +64,8 @@ export default function AlertsScreen() {
             setAlerts(allAlerts);
         } catch (error) {
             console.error('Failed to fetch alerts:', error);
+            // On error, set empty array to show empty state
+            setAlerts([]);
         } finally {
             setIsRefreshing(false);
         }
@@ -79,9 +91,49 @@ export default function AlertsScreen() {
                         ...payload.new,
                         alertType: 'immediate' as const,
                     } as AlertItem;
-                    setAlerts(prev => [newAlert, ...prev]);
-
-                    // Show local notification would go here
+                    // Only add if active
+                    if (newAlert.is_active) {
+                        setAlerts(prev => [newAlert, ...prev]);
+                        // Show local notification would go here
+                    }
+                },
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'immediate_danger_logs',
+                },
+                payload => {
+                    const updatedAlert = {
+                        ...payload.new,
+                        alertType: 'immediate' as const,
+                    } as AlertItem;
+                    setAlerts(prev => {
+                        if (!updatedAlert.is_active) {
+                            return prev.filter(a => a.id !== updatedAlert.id);
+                        }
+                        const existingIndex = prev.findIndex(a => a.id === updatedAlert.id);
+                        if (existingIndex >= 0) {
+                            const updated = [...prev];
+                            updated[existingIndex] = updatedAlert;
+                            return updated;
+                        }
+                        return [updatedAlert, ...prev];
+                    });
+                },
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'DELETE',
+                    schema: 'public',
+                    table: 'immediate_danger_logs',
+                },
+                payload => {
+                    const deletedId = payload.old.id;
+                    setAlerts(prev => prev.filter(a => a.id !== deletedId));
                 },
             )
             .on(
@@ -97,6 +149,45 @@ export default function AlertsScreen() {
                         alertType: 'suspicious' as const,
                     } as AlertItem;
                     setAlerts(prev => [newAlert, ...prev]);
+                },
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'suspicious_individual_logs',
+                },
+                payload => {
+                    const updatedAlert = {
+                        ...payload.new,
+                        alertType: 'suspicious' as const,
+                    } as AlertItem;
+                    setAlerts(prev => {
+                        // Remove if status changed from pending
+                        if (updatedAlert.status !== 'pending') {
+                            return prev.filter(a => a.id !== updatedAlert.id);
+                        }
+                        const existingIndex = prev.findIndex(a => a.id === updatedAlert.id);
+                        if (existingIndex >= 0) {
+                            const updated = [...prev];
+                            updated[existingIndex] = updatedAlert;
+                            return updated;
+                        }
+                        return [updatedAlert, ...prev];
+                    });
+                },
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'DELETE',
+                    schema: 'public',
+                    table: 'suspicious_individual_logs',
+                },
+                payload => {
+                    const deletedId = payload.old.id;
+                    setAlerts(prev => prev.filter(a => a.id !== deletedId));
                 },
             )
             .subscribe();
