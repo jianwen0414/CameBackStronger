@@ -1,0 +1,66 @@
+diff --git a/node_modules/react-native-safe-area-context/android/.project b/node_modules/react-native-safe-area-context/android/.project
+new file mode 100644
+index 0000000..6e07db3
+--- /dev/null
++++ b/node_modules/react-native-safe-area-context/android/.project
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<projectDescription>
++	<name>react-native-safe-area-context</name>
++	<comment>Project react-native-safe-area-context created by Buildship.</comment>
++	<projects>
++	</projects>
++	<buildSpec>
++		<buildCommand>
++			<name>org.eclipse.buildship.core.gradleprojectbuilder</name>
++			<arguments>
++			</arguments>
++		</buildCommand>
++	</buildSpec>
++	<natures>
++		<nature>org.eclipse.buildship.core.gradleprojectnature</nature>
++	</natures>
++	<filteredResources>
++		<filter>
++			<id>1770094427859</id>
++			<name></name>
++			<type>30</type>
++			<matcher>
++				<id>org.eclipse.core.resources.regexFilterMatcher</id>
++				<arguments>node_modules|\.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>
++			</matcher>
++		</filter>
++	</filteredResources>
++</projectDescription>
+diff --git a/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt b/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt
+index 52450f0..3f3a1ec 100644
+--- a/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt
++++ b/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt
+@@ -30,12 +30,19 @@ target_include_directories(
+ 
+ # https://github.com/react-native-community/discussions-and-proposals/discussions/816
+ # This if-then-else can be removed once this library does not support version below 0.76
++# Ensure C++ standard library is linked
++find_library(CPPLIB c++_shared)
++if(NOT CPPLIB)
++  find_library(CPPLIB c++)
++endif()
++
+ if (REACTNATIVE_MERGED_SO)
+   target_link_libraries(
+           ${LIB_TARGET_NAME}
+           fbjni
+           jsi
+           reactnative
++          ${CPPLIB}
+   )
+ else()
+   target_link_libraries(
+@@ -56,6 +63,7 @@ else()
+           rrc_view
+           turbomodulejsijni
+           yoga
++          ${CPPLIB}
+   )
+ endif()
+ 

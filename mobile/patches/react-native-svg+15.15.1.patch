@@ -1,0 +1,839 @@
+diff --git a/node_modules/react-native-svg/android/.project b/node_modules/react-native-svg/android/.project
+new file mode 100644
+index 0000000..6fbddfb
+--- /dev/null
++++ b/node_modules/react-native-svg/android/.project
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<projectDescription>
++	<name>react-native-svg</name>
++	<comment>Project react-native-svg created by Buildship.</comment>
++	<projects>
++	</projects>
++	<buildSpec>
++		<buildCommand>
++			<name>org.eclipse.buildship.core.gradleprojectbuilder</name>
++			<arguments>
++			</arguments>
++		</buildCommand>
++	</buildSpec>
++	<natures>
++		<nature>org.eclipse.buildship.core.gradleprojectnature</nature>
++	</natures>
++	<filteredResources>
++		<filter>
++			<id>1770094427866</id>
++			<name></name>
++			<type>30</type>
++			<matcher>
++				<id>org.eclipse.core.resources.regexFilterMatcher</id>
++				<arguments>node_modules|\.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>
++			</matcher>
++		</filter>
++	</filteredResources>
++</projectDescription>
+diff --git a/node_modules/react-native-svg/android/bin/build.gradle b/node_modules/react-native-svg/android/bin/build.gradle
+new file mode 100644
+index 0000000..4fe912c
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/build.gradle
+@@ -0,0 +1,147 @@
++buildscript {
++    // The Android Gradle plugin is only required when opening the android folder stand-alone.
++    // This avoids unnecessary downloads and potential conflicts when the library is included as a
++    // module dependency in an application project.
++    if (project == rootProject) {
++        repositories {
++            mavenCentral()
++            google()
++        }
++
++        dependencies {
++            classpath("com.android.tools.build:gradle:7.4.2")
++            classpath "com.diffplug.spotless:spotless-plugin-gradle:6.17.0"
++        }
++    }
++}
++
++def isNewArchitectureEnabled() {
++    // To opt-in for the New Architecture, you can either:
++    // - Set `newArchEnabled` to true inside the `gradle.properties` file
++    // - Invoke gradle with `-newArchEnabled=true`
++    // - Set an environment variable `ORG_GRADLE_PROJECT_newArchEnabled=true`
++    return project.hasProperty("newArchEnabled") && project.newArchEnabled == "true"
++}
++
++if (isNewArchitectureEnabled()) {
++    apply plugin: "com.facebook.react"
++}
++
++if (project == rootProject) {
++    apply from: 'spotless.gradle'
++}
++
++apply plugin: 'com.android.library'
++
++def safeExtGet(prop, fallback) {
++    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
++}
++
++def resolveReactNativeDirectory() {
++  def reactNativeLocation = safeExtGet("REACT_NATIVE_NODE_MODULES_DIR", null)
++  if (reactNativeLocation != null) {
++    return file(reactNativeLocation)
++  }
++
++  // Fallback to node resolver for custom directory structures like monorepos.
++  def reactNativePackage = file(
++      providers.exec {
++          workingDir(rootDir)
++          commandLine("node", "--print", "require.resolve('react-native/package.json')")
++      }.standardOutput.asText.get().trim()
++  )
++  if (reactNativePackage.exists()) {
++    return reactNativePackage.parentFile
++  }
++
++  throw new GradleException("[react-native-svg] Unable to resolve react-native location in node_modules. Your app should define `REACT_NATIVE_NODE_MODULES_DIR` extension property in `app/build.gradle` with a path to react-native in node_modules.")
++}
++
++def reactNativeRootDir = resolveReactNativeDirectory()
++def reactNativeProperties = new Properties()
++file("$reactNativeRootDir/ReactAndroid/gradle.properties").withInputStream { reactNativeProperties.load(it) }
++
++def REACT_NATIVE_VERSION = reactNativeProperties.getProperty("VERSION_NAME")
++def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.startsWith("0.0.0-") ? 1000 : REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
++
++def getFrescoVersion() {
++    def reactNativeRootDir = resolveReactNativeDirectory()
++    def frescoVersion = null
++    file("$reactNativeRootDir/gradle/libs.versions.toml").withInputStream { stream ->
++        stream.eachLine { line ->
++            if (line.contains("fresco") && !line.contains("ref")) {
++                def keyValue = line.split("=")
++                if (keyValue.size() == 2) {
++                    frescoVersion = keyValue[1].trim().replaceAll(/["']/, "")
++                }
++            }
++        }
++    }
++    if (!frescoVersion) {
++        return "3.2.0"
++    }
++    return frescoVersion
++}
++def FRESCO_VERSION = getFrescoVersion()
++
++android {
++    compileSdkVersion safeExtGet('compileSdkVersion', 28)
++    namespace "com.horcrux.svg"
++    def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
++    if (agpVersion.tokenize('.')[0].toInteger() >= 8) {
++        buildFeatures {
++            buildConfig = true
++        }
++    }
++    // Used to override the NDK path/version on internal CI or by allowing
++    // users to customize the NDK path/version from their root project (e.g. for M1 support)
++    if (rootProject.hasProperty("ndkPath")) {
++        ndkPath rootProject.ext.ndkPath
++    }
++    if (rootProject.hasProperty("ndkVersion")) {
++        ndkVersion rootProject.ext.ndkVersion
++    }
++
++    defaultConfig {
++        minSdkVersion safeExtGet('minSdkVersion', 16)
++        //noinspection OldTargetApi
++        targetSdkVersion safeExtGet('targetSdkVersion', 28)
++        buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
++
++        consumerProguardFiles 'proguard-rules.pro'
++    }
++    lintOptions {
++        abortOnError false
++    }
++
++    sourceSets.main {
++        java {
++            if (!isNewArchitectureEnabled()) {
++                srcDirs += [
++                    "src/paper/java",
++                ]
++            }
++        }
++    }
++}
++
++repositories {
++    mavenCentral()
++    mavenLocal()
++    google()
++    maven {
++        // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
++        url "$rootDir/../node_modules/react-native/android"
++    }
++}
++
++dependencies {
++    implementation 'com.facebook.react:react-native:+'
++    implementation("com.facebook.fresco:fresco:${FRESCO_VERSION}") {
++        exclude group: 'com.facebook.soloader'
++    }
++    implementation("com.facebook.fresco:imagepipeline-okhttp3:${FRESCO_VERSION}") {
++        exclude group: 'com.facebook.soloader'
++    }
++    implementation("com.facebook.fresco:middleware:${FRESCO_VERSION}")
++}
+diff --git a/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.jar b/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.jar
+new file mode 100644
+index 0000000..249e583
+Binary files /dev/null and b/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.jar differ
+diff --git a/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.properties b/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.properties
+new file mode 100644
+index 0000000..ae04661
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/gradle/wrapper/gradle-wrapper.properties
+@@ -0,0 +1,5 @@
++distributionBase=GRADLE_USER_HOME
++distributionPath=wrapper/dists
++distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-bin.zip
++zipStoreBase=GRADLE_USER_HOME
++zipStorePath=wrapper/dists
+diff --git a/node_modules/react-native-svg/android/bin/gradlew b/node_modules/react-native-svg/android/bin/gradlew
+new file mode 100644
+index 0000000..a69d9cb
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/gradlew
+@@ -0,0 +1,240 @@
++#!/bin/sh
++
++#
++# Copyright © 2015-2021 the original authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++##############################################################################
++#
++#   Gradle start up script for POSIX generated by Gradle.
++#
++#   Important for running:
++#
++#   (1) You need a POSIX-compliant shell to run this script. If your /bin/sh is
++#       noncompliant, but you have some other compliant shell such as ksh or
++#       bash, then to run this script, type that shell name before the whole
++#       command line, like:
++#
++#           ksh Gradle
++#
++#       Busybox and similar reduced shells will NOT work, because this script
++#       requires all of these POSIX shell features:
++#         * functions;
++#         * expansions «$var», «${var}», «${var:-default}», «${var+SET}»,
++#           «${var#prefix}», «${var%suffix}», and «$( cmd )»;
++#         * compound commands having a testable exit status, especially «case»;
++#         * various built-in commands including «command», «set», and «ulimit».
++#
++#   Important for patching:
++#
++#   (2) This script targets any POSIX shell, so it avoids extensions provided
++#       by Bash, Ksh, etc; in particular arrays are avoided.
++#
++#       The "traditional" practice of packing multiple parameters into a
++#       space-separated string is a well documented source of bugs and security
++#       problems, so this is (mostly) avoided, by progressively accumulating
++#       options in "$@", and eventually passing that to Java.
++#
++#       Where the inherited environment variables (DEFAULT_JVM_OPTS, JAVA_OPTS,
++#       and GRADLE_OPTS) rely on word-splitting, this is performed explicitly;
++#       see the in-line comments for details.
++#
++#       There are tweaks for specific operating systems such as AIX, CygWin,
++#       Darwin, MinGW, and NonStop.
++#
++#   (3) This script is generated from the Groovy template
++#       https://github.com/gradle/gradle/blob/master/subprojects/plugins/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
++#       within the Gradle project.
++#
++#       You can find Gradle at https://github.com/gradle/gradle/.
++#
++##############################################################################
++
++# Attempt to set APP_HOME
++
++# Resolve links: $0 may be a link
++app_path=$0
++
++# Need this for daisy-chained symlinks.
++while
++    APP_HOME=${app_path%"${app_path##*/}"}  # leaves a trailing /; empty if no leading path
++    [ -h "$app_path" ]
++do
++    ls=$( ls -ld "$app_path" )
++    link=${ls#*' -> '}
++    case $link in             #(
++      /*)   app_path=$link ;; #(
++      *)    app_path=$APP_HOME$link ;;
++    esac
++done
++
++APP_HOME=$( cd "${APP_HOME:-./}" && pwd -P ) || exit
++
++APP_NAME="Gradle"
++APP_BASE_NAME=${0##*/}
++
++# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
++DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
++
++# Use the maximum available, or set MAX_FD != -1 to use that value.
++MAX_FD=maximum
++
++warn () {
++    echo "$*"
++} >&2
++
++die () {
++    echo
++    echo "$*"
++    echo
++    exit 1
++} >&2
++
++# OS specific support (must be 'true' or 'false').
++cygwin=false
++msys=false
++darwin=false
++nonstop=false
++case "$( uname )" in                #(
++  CYGWIN* )         cygwin=true  ;; #(
++  Darwin* )         darwin=true  ;; #(
++  MSYS* | MINGW* )  msys=true    ;; #(
++  NONSTOP* )        nonstop=true ;;
++esac
++
++CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
++
++
++# Determine the Java command to use to start the JVM.
++if [ -n "$JAVA_HOME" ] ; then
++    if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
++        # IBM's JDK on AIX uses strange locations for the executables
++        JAVACMD=$JAVA_HOME/jre/sh/java
++    else
++        JAVACMD=$JAVA_HOME/bin/java
++    fi
++    if [ ! -x "$JAVACMD" ] ; then
++        die "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME
++
++Please set the JAVA_HOME variable in your environment to match the
++location of your Java installation."
++    fi
++else
++    JAVACMD=java
++    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
++
++Please set the JAVA_HOME variable in your environment to match the
++location of your Java installation."
++fi
++
++# Increase the maximum file descriptors if we can.
++if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
++    case $MAX_FD in #(
++      max*)
++        MAX_FD=$( ulimit -H -n ) ||
++            warn "Could not query maximum file descriptor limit"
++    esac
++    case $MAX_FD in  #(
++      '' | soft) :;; #(
++      *)
++        ulimit -n "$MAX_FD" ||
++            warn "Could not set maximum file descriptor limit to $MAX_FD"
++    esac
++fi
++
++# Collect all arguments for the java command, stacking in reverse order:
++#   * args from the command line
++#   * the main class name
++#   * -classpath
++#   * -D...appname settings
++#   * --module-path (only if needed)
++#   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
++
++# For Cygwin or MSYS, switch paths to Windows format before running java
++if "$cygwin" || "$msys" ; then
++    APP_HOME=$( cygpath --path --mixed "$APP_HOME" )
++    CLASSPATH=$( cygpath --path --mixed "$CLASSPATH" )
++
++    JAVACMD=$( cygpath --unix "$JAVACMD" )
++
++    # Now convert the arguments - kludge to limit ourselves to /bin/sh
++    for arg do
++        if
++            case $arg in                                #(
++              -*)   false ;;                            # don't mess with options #(
++              /?*)  t=${arg#/} t=/${t%%/*}              # looks like a POSIX filepath
++                    [ -e "$t" ] ;;                      #(
++              *)    false ;;
++            esac
++        then
++            arg=$( cygpath --path --ignore --mixed "$arg" )
++        fi
++        # Roll the args list around exactly as many times as the number of
++        # args, so each arg winds up back in the position where it started, but
++        # possibly modified.
++        #
++        # NB: a `for` loop captures its iteration list before it begins, so
++        # changing the positional parameters here affects neither the number of
++        # iterations, nor the values presented in `arg`.
++        shift                   # remove old arg
++        set -- "$@" "$arg"      # push replacement arg
++    done
++fi
++
++# Collect all arguments for the java command;
++#   * $DEFAULT_JVM_OPTS, $JAVA_OPTS, and $GRADLE_OPTS can contain fragments of
++#     shell script including quotes and variable substitutions, so put them in
++#     double quotes to make sure that they get re-expanded; and
++#   * put everything else in single quotes, so that it's not re-expanded.
++
++set -- \
++        "-Dorg.gradle.appname=$APP_BASE_NAME" \
++        -classpath "$CLASSPATH" \
++        org.gradle.wrapper.GradleWrapperMain \
++        "$@"
++
++# Stop when "xargs" is not available.
++if ! command -v xargs >/dev/null 2>&1
++then
++    die "xargs is not available"
++fi
++
++# Use "xargs" to parse quoted args.
++#
++# With -n1 it outputs one arg per line, with the quotes and backslashes removed.
++#
++# In Bash we could simply go:
++#
++#   readarray ARGS < <( xargs -n1 <<<"$var" ) &&
++#   set -- "${ARGS[@]}" "$@"
++#
++# but POSIX shell has neither arrays nor command substitution, so instead we
++# post-process each arg (as a line of input to sed) to backslash-escape any
++# character that might be a shell metacharacter, then use eval to reverse
++# that process (while maintaining the separation between arguments), and wrap
++# the whole thing up as a single "set" statement.
++#
++# This will of course break if any of these variables contains a newline or
++# an unmatched quote.
++#
++
++eval "set -- $(
++        printf '%s\n' "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" |
++        xargs -n1 |
++        sed ' s~[^-[:alnum:]+,./:=@_]~\\&~g; ' |
++        tr '\n' ' '
++    )" '"$@"'
++
++exec "$JAVACMD" "$@"
+diff --git a/node_modules/react-native-svg/android/bin/gradlew.bat b/node_modules/react-native-svg/android/bin/gradlew.bat
+new file mode 100644
+index 0000000..f127cfd
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/gradlew.bat
+@@ -0,0 +1,91 @@
++@rem
++@rem Copyright 2015 the original author or authors.
++@rem
++@rem Licensed under the Apache License, Version 2.0 (the "License");
++@rem you may not use this file except in compliance with the License.
++@rem You may obtain a copy of the License at
++@rem
++@rem      https://www.apache.org/licenses/LICENSE-2.0
++@rem
++@rem Unless required by applicable law or agreed to in writing, software
++@rem distributed under the License is distributed on an "AS IS" BASIS,
++@rem WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++@rem See the License for the specific language governing permissions and
++@rem limitations under the License.
++@rem
++
++@if "%DEBUG%"=="" @echo off
++@rem ##########################################################################
++@rem
++@rem  Gradle startup script for Windows
++@rem
++@rem ##########################################################################
++
++@rem Set local scope for the variables with windows NT shell
++if "%OS%"=="Windows_NT" setlocal
++
++set DIRNAME=%~dp0
++if "%DIRNAME%"=="" set DIRNAME=.
++set APP_BASE_NAME=%~n0
++set APP_HOME=%DIRNAME%
++
++@rem Resolve any "." and ".." in APP_HOME to make it shorter.
++for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
++
++@rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
++set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
++
++@rem Find java.exe
++if defined JAVA_HOME goto findJavaFromJavaHome
++
++set JAVA_EXE=java.exe
++%JAVA_EXE% -version >NUL 2>&1
++if %ERRORLEVEL% equ 0 goto execute
++
++echo.
++echo ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
++echo.
++echo Please set the JAVA_HOME variable in your environment to match the
++echo location of your Java installation.
++
++goto fail
++
++:findJavaFromJavaHome
++set JAVA_HOME=%JAVA_HOME:"=%
++set JAVA_EXE=%JAVA_HOME%/bin/java.exe
++
++if exist "%JAVA_EXE%" goto execute
++
++echo.
++echo ERROR: JAVA_HOME is set to an invalid directory: %JAVA_HOME%
++echo.
++echo Please set the JAVA_HOME variable in your environment to match the
++echo location of your Java installation.
++
++goto fail
++
++:execute
++@rem Setup the command line
++
++set CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
++
++
++@rem Execute Gradle
++"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
++
++:end
++@rem End local scope for the variables with windows NT shell
++if %ERRORLEVEL% equ 0 goto mainEnd
++
++:fail
++rem Set variable GRADLE_EXIT_CONSOLE if you need the _script_ return code instead of
++rem the _cmd.exe /c_ return code!
++set EXIT_CODE=%ERRORLEVEL%
++if %EXIT_CODE% equ 0 set EXIT_CODE=1
++if not ""=="%GRADLE_EXIT_CONSOLE%" exit %EXIT_CODE%
++exit /b %EXIT_CODE%
++
++:mainEnd
++if "%OS%"=="Windows_NT" endlocal
++
++:omega
+diff --git a/node_modules/react-native-svg/android/bin/proguard-rules.pro b/node_modules/react-native-svg/android/bin/proguard-rules.pro
+new file mode 100644
+index 0000000..19f9dde
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/proguard-rules.pro
+@@ -0,0 +1 @@
++-keep public class com.horcrux.svg.** {*;}
+diff --git a/node_modules/react-native-svg/android/bin/spotless.gradle b/node_modules/react-native-svg/android/bin/spotless.gradle
+new file mode 100644
+index 0000000..6ac6843
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/spotless.gradle
+@@ -0,0 +1,9 @@
++// formatter & linter configuration for java
++apply plugin: 'com.diffplug.spotless'
++
++spotless {
++  java {
++    target 'src/main/java/**/*.java'
++    googleJavaFormat()
++  }
++}
+\ No newline at end of file
+diff --git a/node_modules/react-native-svg/android/bin/src/main/AndroidManifest.xml b/node_modules/react-native-svg/android/bin/src/main/AndroidManifest.xml
+new file mode 100644
+index 0000000..c4e6c98
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/src/main/AndroidManifest.xml
+@@ -0,0 +1 @@
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"/>
+diff --git a/node_modules/react-native-svg/android/bin/src/main/jni/CMakeLists.txt b/node_modules/react-native-svg/android/bin/src/main/jni/CMakeLists.txt
+new file mode 100644
+index 0000000..f21366b
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/src/main/jni/CMakeLists.txt
+@@ -0,0 +1,99 @@
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE ON)
++
++set(RNSVG_ANDROID_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
++set(RNSVG_COMMON_DIR ${RNSVG_ANDROID_DIR}/../common/cpp)
++set(RNSVG_GENERATED_DIR ${RNSVG_ANDROID_DIR}/build/generated)
++set(RNSVG_GENERATED_JNI_DIR ${RNSVG_GENERATED_DIR}/source/codegen/jni)
++set(RNSVG_GENERATED_REACT_DIR ${RNSVG_GENERATED_JNI_DIR}/react/renderer/components/rnsvg)
++
++file(GLOB rnsvg_SRCS CONFIGURE_DEPENDS *.cpp ${RNSVG_COMMON_DIR}/react/renderer/components/rnsvg/*.cpp)
++file(GLOB rnsvg_codegen_SRCS CONFIGURE_DEPENDS ${RNSVG_GENERATED_REACT_DIR}/*cpp)
++
++add_library(
++  react_codegen_rnsvg
++  SHARED
++  ${rnsvg_SRCS}
++  ${rnsvg_codegen_SRCS}
++)
++
++target_include_directories(
++  react_codegen_rnsvg
++  PUBLIC
++  .
++  ${RNSVG_COMMON_DIR}
++  ${RNSVG_GENERATED_JNI_DIR}
++  ${RNSVG_GENERATED_REACT_DIR}
++)
++
++# https://developer.android.com/guide/practices/page-sizes#cmake
++target_link_options(react_codegen_rnsvg PRIVATE "-Wl,-z,max-page-size=16384")
++
++find_package(ReactAndroid REQUIRED CONFIG)
++
++if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 76)
++  target_link_libraries(
++    react_codegen_rnsvg
++    ReactAndroid::reactnative
++    ReactAndroid::jsi
++  )
++else()
++  target_link_libraries(
++    react_codegen_rnsvg
++    folly_runtime
++    glog
++    jsi
++    react_codegen_rncore
++    react_debug
++    react_nativemodule_core
++    react_render_core
++    react_render_debug
++    react_render_graphics
++    react_render_mapbuffer
++    rrc_image
++    react_render_componentregistry
++    rrc_view
++    turbomodulejsijni
++    yoga
++    react_render_imagemanager
++    react_utils
++  )
++endif()
++
++target_link_libraries(
++  react_codegen_rnsvg
++  fbjni
++)
++
++target_include_directories(
++  react_codegen_rnsvg
++  PUBLIC
++  ${CMAKE_CURRENT_SOURCE_DIR}
++)
++
++if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 80)
++  target_compile_reactnative_options(react_codegen_rnsvg PUBLIC)
++else()
++  target_compile_options(
++    react_codegen_rnsvg
++    PRIVATE
++    -fexceptions
++    -frtti
++    -std=c++20
++    -Wall
++  )
++endif()
++
++target_compile_options(
++  react_codegen_rnsvg
++  PRIVATE
++  -Wpedantic
++  -Wno-gnu-zero-variadic-macro-arguments
++  -Wno-dollar-in-identifier-extension
++)
++
++target_compile_definitions(
++  react_codegen_rnsvg
++  PRIVATE
++  REACT_NATIVE_MINOR_VERSION=${ReactAndroid_VERSION_MINOR}
++)
+diff --git a/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.cpp b/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.cpp
+new file mode 100644
+index 0000000..b47dd65
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.cpp
+@@ -0,0 +1,88 @@
++
++/**
++ * This code was generated by [react-native-codegen](https://www.npmjs.com/package/react-native-codegen).
++ *
++ * Do not edit this file as changes may cause incorrect behavior and will be lost
++ * once the code is regenerated.
++ *
++ * @generated by codegen project: GenerateModuleJniCpp.js
++ */
++
++#include "rnsvg.h"
++
++namespace facebook {
++namespace react {
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_isPointInFill(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, BooleanKind, "isPointInFill", "(Ljava/lang/Double;Lcom/facebook/react/bridge/ReadableMap;)Z", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_isPointInStroke(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, BooleanKind, "isPointInStroke", "(Ljava/lang/Double;Lcom/facebook/react/bridge/ReadableMap;)Z", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getTotalLength(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, NumberKind, "getTotalLength", "(Ljava/lang/Double;)D", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getPointAtLength(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, ObjectKind, "getPointAtLength", "(Ljava/lang/Double;Lcom/facebook/react/bridge/ReadableMap;)Lcom/facebook/react/bridge/WritableMap;", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getBBox(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, ObjectKind, "getBBox", "(Ljava/lang/Double;Lcom/facebook/react/bridge/ReadableMap;)Lcom/facebook/react/bridge/WritableMap;", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getCTM(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, ObjectKind, "getCTM", "(Ljava/lang/Double;)Lcom/facebook/react/bridge/WritableMap;", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getScreenCTM(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, ObjectKind, "getScreenCTM", "(Ljava/lang/Double;)Lcom/facebook/react/bridge/WritableMap;", args, count, cachedMethodId);
++}
++
++static facebook::jsi::Value __hostFunction_NativeSvgRenderableModuleSpecJSI_getRawResource(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, PromiseKind, "getRawResource", "(Ljava/lang/String;Lcom/facebook/react/bridge/Promise;)V", args, count, cachedMethodId);
++}
++
++NativeSvgRenderableModuleSpecJSI::NativeSvgRenderableModuleSpecJSI(const JavaTurboModule::InitParams &params)
++  : JavaTurboModule(params) {
++  methodMap_["isPointInFill"] = MethodMetadata {2, __hostFunction_NativeSvgRenderableModuleSpecJSI_isPointInFill};
++  methodMap_["isPointInStroke"] = MethodMetadata {2, __hostFunction_NativeSvgRenderableModuleSpecJSI_isPointInStroke};
++  methodMap_["getTotalLength"] = MethodMetadata {1, __hostFunction_NativeSvgRenderableModuleSpecJSI_getTotalLength};
++  methodMap_["getPointAtLength"] = MethodMetadata {2, __hostFunction_NativeSvgRenderableModuleSpecJSI_getPointAtLength};
++  methodMap_["getBBox"] = MethodMetadata {2, __hostFunction_NativeSvgRenderableModuleSpecJSI_getBBox};
++  methodMap_["getCTM"] = MethodMetadata {1, __hostFunction_NativeSvgRenderableModuleSpecJSI_getCTM};
++  methodMap_["getScreenCTM"] = MethodMetadata {1, __hostFunction_NativeSvgRenderableModuleSpecJSI_getScreenCTM};
++  methodMap_["getRawResource"] = MethodMetadata {1, __hostFunction_NativeSvgRenderableModuleSpecJSI_getRawResource};
++}
++static facebook::jsi::Value __hostFunction_NativeSvgViewModuleSpecJSI_toDataURL(facebook::jsi::Runtime& rt, TurboModule &turboModule, const facebook::jsi::Value* args, size_t count) {
++  static jmethodID cachedMethodId = nullptr;
++  return static_cast<JavaTurboModule &>(turboModule).invokeJavaMethod(rt, VoidKind, "toDataURL", "(Ljava/lang/Double;Lcom/facebook/react/bridge/ReadableMap;Lcom/facebook/react/bridge/Callback;)V", args, count, cachedMethodId);
++}
++
++NativeSvgViewModuleSpecJSI::NativeSvgViewModuleSpecJSI(const JavaTurboModule::InitParams &params)
++  : JavaTurboModule(params) {
++  methodMap_["toDataURL"] = MethodMetadata {3, __hostFunction_NativeSvgViewModuleSpecJSI_toDataURL};
++}
++
++std::shared_ptr<TurboModule> rnsvg_ModuleProvider(const std::string &moduleName, const JavaTurboModule::InitParams &params) {
++  if (moduleName == "RNSVGRenderableModule") {
++    return std::make_shared<NativeSvgRenderableModuleSpecJSI>(params);
++  }
++  if (moduleName == "RNSVGSvgViewModule") {
++    return std::make_shared<NativeSvgViewModuleSpecJSI>(params);
++  }
++  return nullptr;
++}
++
++} // namespace react
++} // namespace facebook
+diff --git a/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.h b/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.h
+new file mode 100644
+index 0000000..032cecf
+--- /dev/null
++++ b/node_modules/react-native-svg/android/bin/src/main/jni/rnsvg.h
+@@ -0,0 +1,33 @@
++#pragma once
++
++#include <ReactCommon/JavaTurboModule.h>
++#include <ReactCommon/TurboModule.h>
++#include <jsi/jsi.h>
++#include <react/renderer/components/rnsvg/RNSVGComponentDescriptors.h>
++#include <react/renderer/components/rnsvg/RNSVGImageComponentDescriptor.h>
++
++namespace facebook {
++namespace react {
++
++/**
++ * JNI C++ class for module 'NativeSvgRenderableModule'
++ */
++class JSI_EXPORT NativeSvgRenderableModuleSpecJSI : public JavaTurboModule {
++public:
++  NativeSvgRenderableModuleSpecJSI(const JavaTurboModule::InitParams &params);
++};
++
++/**
++ * JNI C++ class for module 'NativeSvgViewModule'
++ */
++class JSI_EXPORT NativeSvgViewModuleSpecJSI : public JavaTurboModule {
++public:
++  NativeSvgViewModuleSpecJSI(const JavaTurboModule::InitParams &params);
++};
++
++
++JSI_EXPORT
++std::shared_ptr<TurboModule> rnsvg_ModuleProvider(const std::string &moduleName, const JavaTurboModule::InitParams &params);
++
++} // namespace react
++} // namespace facebook
+\ No newline at end of file
+diff --git a/node_modules/react-native-svg/android/src/main/jni/CMakeLists.txt b/node_modules/react-native-svg/android/src/main/jni/CMakeLists.txt
+index f21366b..35bc890 100644
+--- a/node_modules/react-native-svg/android/src/main/jni/CMakeLists.txt
++++ b/node_modules/react-native-svg/android/src/main/jni/CMakeLists.txt
+@@ -29,6 +29,12 @@ target_include_directories(
+ # https://developer.android.com/guide/practices/page-sizes#cmake
+ target_link_options(react_codegen_rnsvg PRIVATE "-Wl,-z,max-page-size=16384")
+ 
++# Ensure C++ standard library is linked
++find_library(CPPLIB c++_shared)
++if(NOT CPPLIB)
++  find_library(CPPLIB c++)
++endif()
++
+ find_package(ReactAndroid REQUIRED CONFIG)
+ 
+ if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 76)
+@@ -63,6 +69,7 @@ endif()
+ target_link_libraries(
+   react_codegen_rnsvg
+   fbjni
++  ${CPPLIB}
+ )
+ 
+ target_include_directories(
