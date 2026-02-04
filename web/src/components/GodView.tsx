@@ -148,6 +148,27 @@ export default function GodView({ onAlertClick }: GodViewProps) {
 
                     return (
                         <>
+                            {/* Monitor Bezel Overlay */}
+                            <div className="absolute inset-0 pointer-events-none z-10 rounded-lg overflow-hidden">
+                                {/* Corners */}
+                                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-cyan-500/50 rounded-tl-lg" />
+                                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-cyan-500/50 rounded-tr-lg" />
+                                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-cyan-500/50 rounded-bl-lg" />
+                                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-cyan-500/50 rounded-br-lg" />
+                                
+                                {/* Technical Markings */}
+                                <div className="absolute top-4 left-20 text-[10px] font-mono text-cyan-500/50 tracking-widest">SYS.VISUAL.01</div>
+                                <div className="absolute bottom-4 right-20 text-[10px] font-mono text-cyan-500/50 tracking-widest">LIVE FEED // SECURE</div>
+
+                                {/* Crosshairs */}
+                                <div className="absolute top-1/2 left-1/2 w-8 h-8 -translate-x-1/2 -translate-y-1/2 border border-white/20 rounded-full" />
+                                <div className="absolute top-1/2 left-1/2 w-[1px] h-8 -translate-x-1/2 -translate-y-1/2 bg-white/20" />
+                                <div className="absolute top-1/2 left-1/2 w-8 h-[1px] -translate-x-1/2 -translate-y-1/2 bg-white/20" />
+                                
+                                {/* Scanlines */}
+                                <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_4px,3px_100%] pointer-events-none opacity-20" />
+                            </div>
+
                             {/* Danger Beacons */}
                             {immediateDangers
                                 .filter(d => d.lat && d.long)

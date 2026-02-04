@@ -147,22 +147,25 @@ export default function AnalyticsPanel() {
                                 </defs>
                                 <XAxis
                                     dataKey="hour"
-                                    stroke="#606070"
+                                    stroke="#A0A0B0"
                                     fontSize={10}
                                     tickLine={false}
+                                    tick={{ fill: '#A0A0B0', fontFamily: 'monospace' }}
                                 />
                                 <YAxis
-                                    stroke="#606070"
+                                    stroke="#A0A0B0"
                                     fontSize={10}
                                     tickLine={false}
                                     axisLine={false}
+                                    tick={{ fill: '#A0A0B0', fontFamily: 'monospace' }}
                                 />
                                 <Tooltip
                                     contentStyle={{
-                                        background: 'rgba(20, 20, 30, 0.95)',
-                                        border: '1px solid rgba(0, 245, 255, 0.3)',
+                                        background: 'rgba(20, 20, 25, 0.95)',
+                                        border: '1px solid rgba(0, 240, 255, 0.3)',
                                         borderRadius: '8px',
-                                        color: '#fff'
+                                        color: '#fff',
+                                        fontFamily: 'monospace'
                                     }}
                                 />
                                 <Area
@@ -251,11 +254,11 @@ interface StatCardProps {
 
 function StatCard({ icon, value, label, color }: StatCardProps) {
     const colorMap = {
-        red: 'text-[#ff0040]',
-        yellow: 'text-[#ffcc00]',
-        cyan: 'text-[#00f5ff]',
-        purple: 'text-[#bf00ff]',
-        green: 'text-[#00ff88]'
+        red: 'text-[#ff0040] drop-shadow-[0_0_5px_rgba(255,0,64,0.5)]',
+        yellow: 'text-[#ffcc00] drop-shadow-[0_0_5px_rgba(255,204,0,0.5)]',
+        cyan: 'text-[#00F0FF] drop-shadow-[0_0_5px_rgba(0,240,255,0.5)]',
+        purple: 'text-[#7000FF] drop-shadow-[0_0_5px_rgba(112,0,255,0.5)]',
+        green: 'text-[#00ff88] drop-shadow-[0_0_5px_rgba(0,255,136,0.5)]'
     };
 
     return (

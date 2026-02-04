@@ -23,41 +23,29 @@ import { useAlertStore } from '../store/useAlertStore';
 
 const { width, height } = Dimensions.get('window');
 
-// Dark mode map style
+// Midnight Commander Map Style
 const DARK_MAP_STYLE = [
-    { elementType: 'geometry', stylers: [{ color: '#0a0a0f' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#606070' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#0a0a0f' }] },
-    {
-        featureType: 'administrative',
-        elementType: 'geometry.stroke',
-        stylers: [{ color: '#1a1a25' }],
-    },
-    {
-        featureType: 'road',
-        elementType: 'geometry',
-        stylers: [{ color: '#1a1a25' }],
-    },
-    {
-        featureType: 'road',
-        elementType: 'geometry.stroke',
-        stylers: [{ color: '#12121a' }],
-    },
-    {
-        featureType: 'road.highway',
-        elementType: 'geometry',
-        stylers: [{ color: '#2a2a35' }],
-    },
-    {
-        featureType: 'water',
-        elementType: 'geometry',
-        stylers: [{ color: '#0d1b2a' }],
-    },
-    {
-        featureType: 'poi.park',
-        elementType: 'geometry',
-        stylers: [{ color: '#0d1a0d' }],
-    },
+  { elementType: "geometry", stylers: [{ color: "#212121" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#757575" }] },
+  { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+  { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#181818" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+  { featureType: "poi.park", elementType: "labels.text.stroke", stylers: [{ color: "#1b1b1b" }] },
+  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#373737" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
+  { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#4e4e4e" }] },
+  { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+  { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] }
 ];
 
 // Mock routes (in production, fetch from routing API)
@@ -487,12 +475,13 @@ const styles = StyleSheet.create({
         top: 70,
         left: 16,
         right: 16,
-        backgroundColor: 'rgba(10, 10, 20, 0.72)',
+        backgroundColor: 'rgba(20, 20, 25, 0.6)',
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.25)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
         padding: 12,
         gap: 10,
+        // Backdrop blur effect is handled by native modules usually, keeping alpha bg for now
     },
     navRow: {
         flexDirection: 'row',

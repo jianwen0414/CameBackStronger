@@ -1,412 +1,265 @@
-/**
- * NightWalk Mobile - Scanner Screen (AR Tab)
- * AR view with SVG overlays for hazard visualization
- */
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-    View,
-    Text,
-    StyleSheet,
-    PermissionsAndroid,
-    Platform,
-    Alert,
-} from 'react-native';
-import Svg, {
-    Circle,
-    LinearGradient,
-    RadialGradient,
-    Path,
-    Rect,
-    Defs,
-    Stop,
-    G,
-    Pattern,
-} from 'react-native-svg';
-import Geolocation from '@react-native-community/geolocation';
-import GeospatialModule, { AnchorResult } from '../native/GeospatialModule';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated, Easing } from 'react-native';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { useAlertStore } from '../store/useAlertStore';
+import { Shield, Navigation, Scan } from 'lucide-react-native';
 
-const SCREEN_WIDTH = 400;
-const SCREEN_HEIGHT = 800;
+const { width, height } = Dimensions.get('window');
+
+// Mock path data for SVG (Green Path)
+const pathData = `M${width * 0.2} ${height * 0.8} C${width * 0.4} ${height * 0.6}, ${width * 0.6} ${height * 0.7}, ${width * 0.8} ${height * 0.4}`;
 
 export default function ScannerScreen() {
-    const [isARReady, setIsARReady] = useState(false);
-    const [currentLocation, setCurrentLocation] = useState<{
-        lat: number;
-        long: number;
-    } | null>(null);
-    const [hazardAnchors, setHazardAnchors] = useState<AnchorResult[]>([]);
-    const [arError, setArError] = useState<string | null>(null);
+  const { zoneSafety, nearbyHazards, fetchNearbyHazards } = useAlertStore();
+  
+  // Animations
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
 
-    const { nearbyHazards, zoneSafety, fetchNearbyHazards } = useAlertStore();
+  useEffect(() => {
+    // Pulse animation for scan button
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ])
+    ).start();
 
-    // Request permissions
-    useEffect(() => {
-        async function requestPermissions() {
-            if (Platform.OS === 'android') {
-                const granted = await PermissionsAndroid.requestMultiple([
-                    PermissionsAndroid.PERMISSIONS.CAMERA,
-                    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-                ]);
+    // Scan line animation
+    Animated.loop(
+      Animated.timing(scanLineAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    ).start();
+  }, []);
 
-                const allGranted = Object.values(granted).every(
-                    status => status === PermissionsAndroid.RESULTS.GRANTED,
-                );
+  const handleScan = () => {
+    // Mock scan - fetch nearby hazards (you can use actual geolocation here)
+    fetchNearbyHazards(3.1390, 101.6869, 1000);
+  };
 
-                if (!allGranted) {
-                    Alert.alert(
-                        'Permissions Required',
-                        'Camera and Location permissions are required for AR features.',
-                    );
-                }
-            }
-        }
-        requestPermissions();
-    }, []);
+  return (
+    <View style={styles.container}>
+      {/* Dark Background with Grid Pattern */}
+      <View style={styles.gridBackground} />
 
-    // Initialize ARCore Geospatial
-    useEffect(() => {
-        async function initAR() {
-            try {
-                const result = await GeospatialModule.initialize();
-                if (result.success) {
-                    setIsARReady(true);
-                    setArError(null);
-                }
-            } catch (error: any) {
-                // Expected on emulators - ARCore Geospatial API requires physical device
-                const errorCode = error.code || '';
-                const isEmulatorLimitation = 
-                    errorCode === 'ARCORE_NOT_AVAILABLE' || 
-                    errorCode === 'DEVICE_NOT_COMPATIBLE';
-                
-                if (isEmulatorLimitation) {
-                    setArError('AR mode requires physical device. Using GPS-only mode.');
-                } else {
-                    setArError(error.message || 'Failed to initialize AR');
-                }
-                
-                console.log('ARCore not available, using GPS fallback');
-            }
-        }
-        initAR();
+      {/* SVG Layer - Green Path */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Svg height="100%" width="100%">
+          <Defs>
+            <LinearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor="#00FF88" stopOpacity="1" />
+              <Stop offset="1" stopColor="#00F0FF" stopOpacity="1" />
+            </LinearGradient>
+          </Defs>
+          
+          {/* Outer Glow */}
+          <Path
+            d={pathData}
+            stroke="#00FF88"
+            strokeWidth="10"
+            strokeOpacity="0.3"
+            fill="none"
+          />
+          
+          {/* Inner Core */}
+          <Path
+            d={pathData}
+            stroke="url(#grad)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            fill="none"
+          />
 
-        return () => {
-            GeospatialModule.destroy().catch(() => { });
-        };
-    }, []);
+          {/* Scan Line Animation (simulated) */}
+          <Circle
+            cx={width * 0.5}
+            cy={height * 0.5}
+            r="100"
+            stroke="#00F0FF"
+            strokeWidth="2"
+            strokeOpacity="0.5"
+            fill="none"
+          />
+        </Svg>
+      </View>
 
-    // Get current location
-    useEffect(() => {
-        const watchId = Geolocation.watchPosition(
-            position => {
-                const { latitude, longitude } = position.coords;
-                setCurrentLocation({ lat: latitude, long: longitude });
-                fetchNearbyHazards(latitude, longitude, 500);
-            },
-            error => console.error('Location error:', error),
-            { enableHighAccuracy: true, distanceFilter: 10 },
-        );
-
-        return () => Geolocation.clearWatch(watchId);
-    }, [fetchNearbyHazards]);
-
-    // Calculate hazard anchors using Geospatial API
-    const updateHazardAnchors = useCallback(async () => {
-        if (!isARReady || nearbyHazards.length === 0) return;
-
-        const anchors: AnchorResult[] = [];
-
-        for (const hazard of nearbyHazards.slice(0, 10)) {
-            try {
-                const anchor = await GeospatialModule.getGeospatialAnchor(
-                    hazard.coordinates.lat,
-                    hazard.coordinates.long,
-                );
-                anchors.push(anchor);
-            } catch {
-                // Skip if anchor calculation fails
-            }
-        }
-
-        setHazardAnchors(anchors);
-    }, [isARReady, nearbyHazards]);
-
-    useEffect(() => {
-        const interval = setInterval(updateHazardAnchors, 1000);
-        return () => clearInterval(interval);
-    }, [updateHazardAnchors]);
-
-    // Get closest hazard distance for red mist effect
-    const closestHazard = hazardAnchors.reduce<AnchorResult | null>(
-        (closest, anchor) => {
-            if (!closest || anchor.distanceMeters < closest.distanceMeters) {
-                return anchor;
-            }
-            return closest;
-        },
-        null,
-    );
-
-    const showRedMist = closestHazard && closestHazard.distanceMeters < 20;
-    const redMistIntensity = closestHazard
-        ? Math.max(0, 1 - closestHazard.distanceMeters / 20)
-        : 0;
-
-    return (
-        <View style={styles.container}>
-            {/* AR Camera View Placeholder */}
-            <View style={styles.cameraView}>
-                <Text style={styles.cameraPlaceholder}>
-                    {isARReady ? '🎥 AR Camera Active' : arError || 'Initializing AR...'}
-                </Text>
-                {arError && !isARReady && (
-                    <Text style={styles.cameraNote}>
-                        ℹ️ Hazard tracking active using GPS. For AR mode, use a physical device.
-                    </Text>
-                )}
-            </View>
-
-            {/* SVG Overlay */}
-            <Svg width={SCREEN_WIDTH} height={SCREEN_HEIGHT} style={styles.overlay}>
-                <Defs>
-                    <LinearGradient id="redMist" x1="0" y1="0" x2="0" y2="1">
-                        <Stop
-                            offset="0%"
-                            stopColor="rgb(255, 0, 64)"
-                            stopOpacity={redMistIntensity * 0.4}
-                        />
-                        <Stop
-                            offset="50%"
-                            stopColor="rgb(255, 0, 64)"
-                            stopOpacity={redMistIntensity * 0.1}
-                        />
-                        <Stop
-                            offset="100%"
-                            stopColor="rgb(255, 0, 64)"
-                            stopOpacity={redMistIntensity * 0.4}
-                        />
-                    </LinearGradient>
-                    <RadialGradient id="redMistGlow" cx="50%" cy="50%" r="70%">
-                        <Stop offset="0%" stopColor="rgb(255, 0, 64)" stopOpacity={redMistIntensity * 0.35} />
-                        <Stop offset="60%" stopColor="rgb(255, 0, 64)" stopOpacity={redMistIntensity * 0.15} />
-                        <Stop offset="100%" stopColor="rgb(20, 0, 10)" stopOpacity={0} />
-                    </RadialGradient>
-                    <RadialGradient id="hazardGlowRed" cx="50%" cy="50%" r="50%">
-                        <Stop offset="0%" stopColor="rgb(255, 40, 90)" stopOpacity={0.8} />
-                        <Stop offset="60%" stopColor="rgb(255, 0, 64)" stopOpacity={0.4} />
-                        <Stop offset="100%" stopColor="rgb(10, 0, 6)" stopOpacity={0} />
-                    </RadialGradient>
-                    <RadialGradient id="hazardGlowYellow" cx="50%" cy="50%" r="50%">
-                        <Stop offset="0%" stopColor="rgb(255, 230, 120)" stopOpacity={0.8} />
-                        <Stop offset="60%" stopColor="rgb(255, 204, 0)" stopOpacity={0.4} />
-                        <Stop offset="100%" stopColor="rgb(10, 8, 0)" stopOpacity={0} />
-                    </RadialGradient>
-                    <LinearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0%" stopColor="rgb(0, 0, 0)" stopOpacity={0.15} />
-                        <Stop offset="50%" stopColor="rgb(0, 0, 0)" stopOpacity={0} />
-                        <Stop offset="100%" stopColor="rgb(0, 0, 0)" stopOpacity={0.2} />
-                    </LinearGradient>
-                    <Pattern id="scanlines" width="6" height="6" patternUnits="userSpaceOnUse">
-                        <Rect x="0" y="0" width="6" height="1" fill="rgba(0, 255, 255, 0.08)" />
-                    </Pattern>
-                </Defs>
-
-                {/* Subtle vignette */}
-                <Rect x={0} y={0} width={SCREEN_WIDTH} height={SCREEN_HEIGHT} fill="url(#vignette)" />
-
-                {/* Red Mist Effect when hazard < 20m */}
-                {showRedMist && (
-                    <>
-                        <Rect
-                            x={0}
-                            y={0}
-                            width={SCREEN_WIDTH}
-                            height={SCREEN_HEIGHT}
-                            fill="url(#redMist)"
-                        />
-                        <Rect
-                            x={0}
-                            y={0}
-                            width={SCREEN_WIDTH}
-                            height={SCREEN_HEIGHT}
-                            fill="url(#redMistGlow)"
-                        />
-                    </>
-                )}
-
-                {/* Green Path Arrow (center) */}
-                <G transform={`translate(${SCREEN_WIDTH / 2 - 25}, ${SCREEN_HEIGHT / 2 - 50})`}>
-                    <Path
-                        d="M25 0 L50 30 L35 30 L35 60 L15 60 L15 30 L0 30 Z"
-                        fill="rgba(0, 255, 136, 0.8)"
-                    />
-                </G>
-
-                {/* Hazard Indicators */}
-                {hazardAnchors.map((anchor, index) => {
-                    if (!anchor.isInFront) return null;
-
-                    // Convert bearing to screen position
-                    const x =
-                        SCREEN_WIDTH / 2 + (anchor.relativeBearingDegrees / 90) * (SCREEN_WIDTH / 2);
-                    const y = SCREEN_HEIGHT * 0.4 + anchor.elevationAngleDegrees * 2;
-
-                    // Size based on distance
-                    const size = Math.max(10, 50 - anchor.distanceMeters / 10);
-                    const isCritical = anchor.distanceMeters < 50;
-                    const baseColor = isCritical ? 'rgba(255, 0, 64, 0.8)' : 'rgba(255, 204, 0, 0.6)';
-                    const glowId = isCritical ? 'hazardGlowRed' : 'hazardGlowYellow';
-
-                    return (
-                        <G key={index}>
-                            <Circle cx={x} cy={y} r={size * 1.9} fill={`url(#${glowId})`} />
-                            <Circle cx={x} cy={y} r={size * 1.2} fill={baseColor} opacity={0.35} />
-                            <Circle cx={x} cy={y} r={size * 0.85} fill={baseColor} />
-                            <Circle
-                                cx={x}
-                                cy={y}
-                                r={size * 1.35}
-                                fill="none"
-                                stroke="rgba(255, 255, 255, 0.18)"
-                                strokeWidth={1}
-                            />
-                        </G>
-                    );
-                })}
-
-                {/* Scanlines and subtle HUD noise */}
-                <Rect
-                    x={0}
-                    y={0}
-                    width={SCREEN_WIDTH}
-                    height={SCREEN_HEIGHT}
-                    fill="url(#scanlines)"
-                    opacity={0.6}
-                />
-            </Svg>
-
-            {/* HUD Overlay */}
-            <View style={styles.hud}>
-                <View style={styles.hudTopLeft}>
-                    <Text style={styles.hudLabel}>ZONE SAFETY</Text>
-                    <Text
-                        style={[
-                            styles.hudValue,
-                            { color: zoneSafety > 70 ? '#00ff88' : zoneSafety > 40 ? '#ffcc00' : '#ff0040' },
-                        ]}
-                    >
-                        {zoneSafety}%
-                    </Text>
-                </View>
-
-                <View style={styles.hudTopRight}>
-                    <Text style={styles.hudLabel}>HAZARDS NEARBY</Text>
-                    <Text style={styles.hudValue}>{nearbyHazards.length}</Text>
-                </View>
-
-                {closestHazard && (
-                    <View style={styles.hudBottom}>
-                        <Text style={styles.warningText}>
-                            ⚠️ Nearest threat: {Math.round(closestHazard.distanceMeters)}m
-                        </Text>
-                    </View>
-                )}
-            </View>
-
-            {/* Scanlines Effect */}
-            <View style={styles.scanlines} pointerEvents="none" />
+      {/* HUD Layer */}
+      <View style={styles.hudContainer}>
+        {/* Top Left: Safety Score */}
+        <View style={styles.glassPill}>
+          <Shield size={16} color={zoneSafety > 80 ? "#00FF88" : "#FF0040"} />
+          <Text style={styles.hudText}>SAFETY SCORE: {zoneSafety}%</Text>
         </View>
-    );
+
+        {/* Top Right: Hazard Count */}
+        <View style={styles.hazardPill}>
+          <Navigation size={16} color="#FFCC00" />
+          <Text style={styles.hudText}>{nearbyHazards.length} THREATS NEARBY</Text>
+        </View>
+
+        {/* Center Target Reticle */}
+        <View style={styles.reticle}>
+          <View style={styles.reticleCornerTL} />
+          <View style={styles.reticleCornerTR} />
+          <View style={styles.reticleCornerBL} />
+          <View style={styles.reticleCornerBR} />
+          
+          {/* Scanning Line */}
+          <Animated.View 
+            style={[
+              styles.scanLine,
+              {
+                transform: [{
+                  translateY: scanLineAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-100, 100],
+                  }),
+                }],
+              },
+            ]}
+          />
+        </View>
+
+        {/* Bottom Action */}
+        <View style={styles.bottomControls}>
+          <TouchableOpacity style={styles.scanButton} onPress={handleScan}>
+            <Animated.View style={[styles.scanButtonInner, { transform: [{ scale: pulseAnim }] }]}>
+              <Scan size={32} color="#020204" />
+            </Animated.View>
+            <View style={styles.scanButtonGlow} />
+          </TouchableOpacity>
+          <Text style={styles.scanLabel}>TAP TO SCAN AREA</Text>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#0a0a0f',
-    },
-    cameraView: {
-        flex: 1,
-        backgroundColor: '#1a1a25',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    cameraPlaceholder: {
-        color: '#606070',
-        fontSize: 16,
-        fontFamily: 'monospace',
-    },
-    cameraNote: {
-        color: '#00f5ff',
-        fontSize: 12,
-        marginTop: 12,
-        textAlign: 'center',
-        paddingHorizontal: 40,
-        lineHeight: 18,
-    },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    hud: {
-        ...StyleSheet.absoluteFillObject,
-        padding: 20,
-    },
-    hudTopLeft: {
-        position: 'absolute',
-        top: 20,
-        left: 20,
-        backgroundColor: 'rgba(10, 10, 20, 0.7)',
-        padding: 12,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
-    },
-    hudTopRight: {
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        backgroundColor: 'rgba(10, 10, 20, 0.7)',
-        padding: 12,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
-    },
-    hudBottom: {
-        position: 'absolute',
-        bottom: 100,
-        left: 20,
-        right: 20,
-        backgroundColor: 'rgba(255, 0, 64, 0.2)',
-        padding: 16,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ff0040',
-        alignItems: 'center',
-    },
-    hudLabel: {
-        color: '#606070',
-        fontSize: 10,
-        fontFamily: 'monospace',
-        letterSpacing: 2,
-        marginBottom: 4,
-    },
-    hudValue: {
-        color: '#00f5ff',
-        fontSize: 28,
-        fontWeight: '700',
-        fontFamily: 'monospace',
-    },
-    warningText: {
-        color: '#ff0040',
-        fontSize: 14,
-        fontWeight: '600',
-        textShadowColor: 'rgba(255, 0, 64, 0.5)',
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 10,
-    },
-    scanlines: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'transparent',
-        opacity: 0.05,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#020204',
+  },
+  gridBackground: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.15,
+    // Grid pattern simulation via border (actual grid would need SVG or Image)
+  },
+  hudContainer: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'space-between',
+  },
+  glassPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(20, 20, 25, 0.6)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 100,
+    alignSelf: 'flex-start',
+    marginTop: 40,
+  },
+  hazardPill: {
+    position: 'absolute',
+    top: 64,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(20, 20, 25, 0.6)',
+    borderColor: 'rgba(255, 204, 0, 0.3)',
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 100,
+  },
+  hudText: {
+    color: '#FFF',
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  reticle: {
+    position: 'absolute',
+    top: height / 2 - 100,
+    left: width / 2 - 100,
+    width: 200,
+    height: 200,
+    borderWidth: 1,
+    borderColor: 'rgba(0,240,255,0.3)',
+    borderRadius: 20,
+    opacity: 0.8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reticleCornerTL: { position: 'absolute', top: -1, left: -1, width: 20, height: 20, borderTopWidth: 2, borderLeftWidth: 2, borderColor: '#00F0FF' },
+  reticleCornerTR: { position: 'absolute', top: -1, right: -1, width: 20, height: 20, borderTopWidth: 2, borderRightWidth: 2, borderColor: '#00F0FF' },
+  reticleCornerBL: { position: 'absolute', bottom: -1, left: -1, width: 20, height: 20, borderBottomWidth: 2, borderLeftWidth: 2, borderColor: '#00F0FF' },
+  reticleCornerBR: { position: 'absolute', bottom: -1, right: -1, width: 20, height: 20, borderBottomWidth: 2, borderRightWidth: 2, borderColor: '#00F0FF' },
+  scanLine: {
+    width: '100%',
+    height: 2,
+    backgroundColor: '#00F0FF',
+    shadowColor: '#00F0FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+  },
+  bottomControls: {
+    alignItems: 'center',
+    marginBottom: 40,
+    gap: 12,
+  },
+  scanButton: {
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  scanButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#00F0FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  scanButtonGlow: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#00F0FF',
+    opacity: 0.3,
+    zIndex: 1,
+  },
+  scanLabel: {
+    color: '#00F0FF',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
 });
