@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import MapView, { Heatmap, Polyline, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import { MapPin, Navigation, Shield } from 'lucide-react-native';
+import { MapPin, Navigation, Shield, Car, User, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCw } from 'lucide-react-native';
 import Config from 'react-native-config';
 import Geolocation from '@react-native-community/geolocation';
 // @ts-ignore - Type definitions not available
@@ -66,6 +66,16 @@ const FAST_ROUTE = [
 ];
 
 type RouteType = 'safe' | 'fast' | null;
+type TransportationMode = 'driving' | 'walking';
+type NavigationStep = {
+    instruction: string;
+    distance: { text: string; value: number };
+    duration: { text: string; value: number };
+    startLocation: { lat: number; lng: number };
+    endLocation: { lat: number; lng: number };
+    maneuver?: string;
+    polyline: string;
+};
 
 // Default coordinates constant
 const DEFAULT_COORDS = {
@@ -172,8 +182,15 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
 
 export default function MapScreen() {
     const mapRef = useRef<MapView>(null);
+    const locationWatchId = useRef<number | null>(null);
     const [currentLocation, setCurrentLocation] = useState(DEFAULT_COORDS);
     const [activeRoute, setActiveRoute] = useState<RouteType>(null);
+    const [transportationMode, setTransportationMode] = useState<TransportationMode>('driving');
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [navigationSteps, setNavigationSteps] = useState<NavigationStep[]>([]);
+    const [remainingDistance, setRemainingDistance] = useState<{ text: string; value: number } | null>(null);
+    const [remainingDuration, setRemainingDuration] = useState<{ text: string; value: number } | null>(null);
     const [originLabel, setOriginLabel] = useState('Default Location');
     const [originCoords, setOriginCoords] = useState<{
         latitude: number;
@@ -302,6 +319,22 @@ export default function MapScreen() {
         });
     };
 
+    // Helper function to strip HTML tags from instructions
+    const stripHtml = (html: string): string => {
+        return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    };
+
+    // Helper function to get maneuver icon
+    const getManeuverIcon = (maneuver?: string) => {
+        if (!maneuver) return ArrowRight;
+        const m = maneuver.toLowerCase();
+        if (m.includes('left')) return ArrowLeft;
+        if (m.includes('right')) return ArrowRight;
+        if (m.includes('straight') || m.includes('continue')) return ArrowUp;
+        if (m.includes('uturn') || m.includes('u-turn')) return RotateCw;
+        return ArrowRight;
+    };
+
     const fetchAndCalculateRoutes = async () => {
         if (!originCoords || !destinationCoords) return;
         if (!mapsApiKey) {
@@ -322,6 +355,7 @@ export default function MapScreen() {
                 `https://maps.googleapis.com/maps/api/directions/json` +
                 `?origin=${encodeURIComponent(origin)}` +
                 `&destination=${encodeURIComponent(destination)}` +
+                `&mode=${transportationMode}` +
                 `&alternatives=true` +
                 `&key=${encodeURIComponent(mapsApiKey)}`;
 
@@ -340,6 +374,7 @@ export default function MapScreen() {
 
             let fastest = null as typeof fastestRoute;
             let safest = null as typeof safestRoute;
+            let selectedRoute = null as any;
 
             routes.forEach((route: any, index: number) => {
                 const leg = route?.legs?.[0];
@@ -349,11 +384,47 @@ export default function MapScreen() {
 
                 if (!fastest || duration < fastest.duration) {
                     fastest = { coordinates: coords, duration };
+                    if (activeRoute === 'fast') selectedRoute = route;
                 }
                 if (!safest || safetyScore > safest.safetyScore) {
                     safest = { coordinates: coords, safetyScore };
+                    if (activeRoute === 'safe') selectedRoute = route;
                 }
             });
+
+            // If a route is active, parse steps for navigation
+            if (selectedRoute && activeRoute) {
+                const leg = selectedRoute.legs?.[0];
+                if (leg?.steps) {
+                    const steps: NavigationStep[] = leg.steps.map((step: any) => ({
+                        instruction: stripHtml(step.html_instructions || ''),
+                        distance: step.distance || { text: '', value: 0 },
+                        duration: step.duration || { text: '', value: 0 },
+                        startLocation: {
+                            lat: step.start_location?.lat || 0,
+                            lng: step.start_location?.lng || 0,
+                        },
+                        endLocation: {
+                            lat: step.end_location?.lat || 0,
+                            lng: step.end_location?.lng || 0,
+                        },
+                        maneuver: step.maneuver,
+                        polyline: step.polyline?.points || '',
+                    }));
+                    setNavigationSteps(steps);
+                    setCurrentStepIndex(0);
+                    
+                    // Calculate remaining distance and duration
+                    const totalDistance = leg.distance || { text: '', value: 0 };
+                    const totalDuration = leg.duration || { text: '', value: 0 };
+                    setRemainingDistance(totalDistance);
+                    setRemainingDuration(totalDuration);
+                }
+            } else {
+                setNavigationSteps([]);
+                setRemainingDistance(null);
+                setRemainingDuration(null);
+            }
 
             setFastestRoute(fastest);
             setSafestRoute(safest);
@@ -366,10 +437,136 @@ export default function MapScreen() {
             }
         } catch (error) {
             console.error('Route fetch failed:', error);
+            setRouteError('Failed to fetch directions. Please try again.');
         } finally {
             setIsRouting(false);
         }
     };
+
+    const startNavigation = async () => {
+        if (!navigationSteps.length || !activeRoute) return;
+        
+        const hasPermission = await requestLocationPermission();
+        if (!hasPermission) {
+            setRouteError('Location permission required for navigation');
+            return;
+        }
+        
+        setIsNavigating(true);
+        setCurrentStepIndex(0);
+        
+        // Start watching location
+        locationWatchId.current = Geolocation.watchPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                setCurrentLocation({ latitude, longitude });
+                
+                // Update map to follow user
+                if (mapRef.current) {
+                    mapRef.current.animateToRegion({
+                        latitude,
+                        longitude,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                    }, 1000);
+                }
+                
+                // Check if user has reached current step using functional state update
+                setCurrentStepIndex((currentIdx) => {
+                    if (navigationSteps.length > currentIdx) {
+                        const currentStep = navigationSteps[currentIdx];
+                        const distanceToStep = haversineDistance(
+                            latitude,
+                            longitude,
+                            currentStep.endLocation.lat,
+                            currentStep.endLocation.lng
+                        );
+                        
+                        // If within 50 meters of step end, move to next step
+                        if (distanceToStep < 50 && currentIdx < navigationSteps.length - 1) {
+                            const nextIdx = currentIdx + 1;
+                            
+                            // Update remaining distance/duration
+                            let remainingDist = 0;
+                            let remainingDur = 0;
+                            for (let i = nextIdx; i < navigationSteps.length; i++) {
+                                remainingDist += navigationSteps[i].distance.value;
+                                remainingDur += navigationSteps[i].duration.value;
+                            }
+                            setRemainingDistance({
+                                text: formatDistance(remainingDist),
+                                value: remainingDist,
+                            });
+                            setRemainingDuration({
+                                text: formatDuration(remainingDur),
+                                value: remainingDur,
+                            });
+                            
+                            return nextIdx;
+                        }
+                    }
+                    return currentIdx;
+                });
+            },
+            (error) => {
+                console.error('Location watch error:', error);
+                setRouteError('Location tracking error');
+            },
+            {
+                enableHighAccuracy: true,
+                distanceFilter: 10, // Update every 10 meters
+                interval: 5000,
+                fastestInterval: 2000,
+            }
+        );
+    };
+
+    const stopNavigation = () => {
+        setIsNavigating(false);
+        if (locationWatchId.current !== null) {
+            Geolocation.clearWatch(locationWatchId.current);
+            locationWatchId.current = null;
+        }
+    };
+
+    // Helper functions
+    const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    };
+
+    const formatDistance = (meters: number): string => {
+        if (meters < 1000) {
+            return `${Math.round(meters)} m`;
+        }
+        return `${(meters / 1000).toFixed(1)} km`;
+    };
+
+    const formatDuration = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const hours = Math.floor(mins / 60);
+        if (hours > 0) {
+            return `${hours}h ${mins % 60}m`;
+        }
+        return `${mins}m`;
+    };
+
+    // Cleanup location watch on unmount
+    useEffect(() => {
+        return () => {
+            if (locationWatchId.current !== null) {
+                Geolocation.clearWatch(locationWatchId.current);
+            }
+        };
+    }, []);
 
     return (
         <View style={styles.container}>
@@ -384,7 +581,7 @@ export default function MapScreen() {
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
                 }}
-                showsUserLocation={false}
+                showsUserLocation={isNavigating}
                 showsMyLocationButton={false}
                 onUserLocationChange={(e) => {
                     // Prevent automatic map centering on user location
@@ -576,13 +773,45 @@ export default function MapScreen() {
                         debounce={250}
                     />
                 </View>
+                {/* Transportation Mode Selector */}
+                <View style={styles.modeSelector}>
+                    <Text style={styles.modeLabel}>Mode:</Text>
+                    <TouchableOpacity
+                        style={[styles.modeButton, transportationMode === 'driving' && styles.modeButtonActive]}
+                        onPress={() => {
+                            if (isNavigating) stopNavigation();
+                            setTransportationMode('driving');
+                            setActiveRoute(null);
+                            setNavigationSteps([]);
+                        }}
+                    >
+                        <Car size={16} color={transportationMode === 'driving' ? '#0a0a0f' : '#606070'} />
+                        <Text style={[styles.modeButtonText, transportationMode === 'driving' && styles.modeButtonTextActive]}>
+                            Driving
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.modeButton, transportationMode === 'walking' && styles.modeButtonActive]}
+                        onPress={() => {
+                            if (isNavigating) stopNavigation();
+                            setTransportationMode('walking');
+                            setActiveRoute(null);
+                            setNavigationSteps([]);
+                        }}
+                    >
+                        <User size={16} color={transportationMode === 'walking' ? '#0a0a0f' : '#606070'} />
+                        <Text style={[styles.modeButtonText, transportationMode === 'walking' && styles.modeButtonTextActive]}>
+                            Walking
+                        </Text>
+                    </TouchableOpacity>
+                </View>
                 {routeError && (
                     <Text style={styles.routeErrorText}>{routeError}</Text>
                 )}
                 <TouchableOpacity
                     style={[styles.goButton, isRouting && styles.goButtonDisabled]}
                     onPress={fetchAndCalculateRoutes}
-                    disabled={isRouting || !originCoords || !destinationCoords || !mapsApiKey}
+                    disabled={isRouting || !originCoords || !destinationCoords || !mapsApiKey || isNavigating}
                 >
                     <Text style={styles.goButtonText}>{isRouting ? 'ROUTING...' : 'GO'}</Text>
                 </TouchableOpacity>
@@ -618,7 +847,81 @@ export default function MapScreen() {
                         </Text>
                     </TouchableOpacity>
                 </View>
+                {/* Navigation Controls */}
+                {activeRoute && navigationSteps.length > 0 && (
+                    <View style={styles.navigationControls}>
+                        {!isNavigating ? (
+                            <TouchableOpacity
+                                style={styles.startNavButton}
+                                onPress={startNavigation}
+                            >
+                                <Navigation size={18} color="#0a0a0f" />
+                                <Text style={styles.startNavButtonText}>Start Navigation</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                style={styles.stopNavButton}
+                                onPress={stopNavigation}
+                            >
+                                <X size={18} color="#ff0040" />
+                                <Text style={styles.stopNavButtonText}>Stop Navigation</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                )}
             </View>
+
+            {/* Navigation Instructions Panel */}
+            {isNavigating && navigationSteps.length > 0 && currentStepIndex < navigationSteps.length && (
+                <View style={styles.navInstructionsPanel}>
+                    <View style={styles.navInstructionsHeader}>
+                        <View style={styles.navStepInfo}>
+                            <Text style={styles.navStepNumber}>{currentStepIndex + 1} / {navigationSteps.length}</Text>
+                            {remainingDistance && remainingDuration && (
+                                <Text style={styles.navRemaining}>
+                                    {remainingDistance.text} • {remainingDuration.text}
+                                </Text>
+                            )}
+                        </View>
+                        <TouchableOpacity
+                            style={styles.closeNavButton}
+                            onPress={stopNavigation}
+                        >
+                            <X size={18} color="#606070" />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.navInstructionContent}>
+                        {(() => {
+                            const currentStep = navigationSteps[currentStepIndex];
+                            const ManeuverIcon = getManeuverIcon(currentStep.maneuver);
+                            return (
+                                <>
+                                    <View style={styles.navManeuverIcon}>
+                                        <ManeuverIcon size={32} color="#00f5ff" />
+                                    </View>
+                                    <View style={styles.navInstructionText}>
+                                        <Text style={styles.navInstructionMain}>
+                                            {currentStep.instruction}
+                                        </Text>
+                                        <Text style={styles.navInstructionDistance}>
+                                            {currentStep.distance.text} • {currentStep.duration.text}
+                                        </Text>
+                                    </View>
+                                </>
+                            );
+                        })()}
+                    </View>
+                    {/* Next Step Preview */}
+                    {currentStepIndex < navigationSteps.length - 1 && (
+                        <View style={styles.nextStepPreview}>
+                            <Text style={styles.nextStepLabel}>Next:</Text>
+                            <Text style={styles.nextStepText} numberOfLines={1}>
+                                {navigationSteps[currentStepIndex + 1].instruction}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            )}
 
             {/* Center on User Button */}
             <TouchableOpacity
@@ -998,5 +1301,174 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontFamily: 'monospace',
         marginBottom: 2,
+    },
+    // Transportation Mode Selector
+    modeSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 8,
+    },
+    modeLabel: {
+        color: '#7b7b90',
+        fontSize: 11,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+        width: 50,
+    },
+    modeButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(10, 10, 20, 0.9)',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 245, 255, 0.3)',
+        gap: 6,
+    },
+    modeButtonActive: {
+        backgroundColor: '#00f5ff',
+        borderColor: '#00f5ff',
+    },
+    modeButtonText: {
+        color: '#606070',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    modeButtonTextActive: {
+        color: '#0a0a0f',
+    },
+    // Navigation Controls
+    navigationControls: {
+        marginTop: 10,
+    },
+    startNavButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#00f5ff',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        gap: 8,
+    },
+    startNavButtonText: {
+        color: '#0a0a0f',
+        fontWeight: '700',
+        fontSize: 14,
+        letterSpacing: 1,
+    },
+    stopNavButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 0, 64, 0.2)',
+        borderWidth: 1,
+        borderColor: '#ff0040',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        gap: 8,
+    },
+    stopNavButtonText: {
+        color: '#ff0040',
+        fontWeight: '700',
+        fontSize: 14,
+        letterSpacing: 1,
+    },
+    // Navigation Instructions Panel
+    navInstructionsPanel: {
+        position: 'absolute',
+        bottom: 90, // Above tab bar
+        left: 16,
+        right: 16,
+        backgroundColor: 'rgba(10, 10, 20, 0.95)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 245, 255, 0.3)',
+        padding: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 10,
+    },
+    navInstructionsHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    navStepInfo: {
+        flex: 1,
+    },
+    navStepNumber: {
+        color: '#00f5ff',
+        fontSize: 12,
+        fontWeight: '700',
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    navRemaining: {
+        color: '#606070',
+        fontSize: 11,
+        fontFamily: 'monospace',
+    },
+    closeNavButton: {
+        padding: 4,
+    },
+    navInstructionContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+        marginBottom: 12,
+    },
+    navManeuverIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(0, 245, 255, 0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(0, 245, 255, 0.3)',
+    },
+    navInstructionText: {
+        flex: 1,
+    },
+    navInstructionMain: {
+        color: '#e6f7ff',
+        fontSize: 16,
+        fontWeight: '600',
+        lineHeight: 22,
+        marginBottom: 4,
+    },
+    navInstructionDistance: {
+        color: '#7b7b90',
+        fontSize: 12,
+        fontFamily: 'monospace',
+    },
+    nextStepPreview: {
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255, 255, 255, 0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    nextStepLabel: {
+        color: '#606070',
+        fontSize: 10,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+    },
+    nextStepText: {
+        flex: 1,
+        color: '#7b7b90',
+        fontSize: 12,
     },
 });
