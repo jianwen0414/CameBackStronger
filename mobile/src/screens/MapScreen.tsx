@@ -84,13 +84,15 @@ const DEFAULT_COORDS = {
     longitude: 101.11118512535789,
 };
 
-// Animated Beacon Component
+// Animated Beacon Component - supports red (immediate), yellow (suspicious), and purple (report) beacons
 function AnimatedBeacon({ hazard }: { hazard: any }) {
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const opacityAnim = useRef(new Animated.Value(0.8)).current;
     
+    // Determine beacon kind: 'immediate' (red), 'suspicious' (yellow), or 'report' (purple)
+    const beaconKind: string = hazard.beacon_kind || (hazard.is_immediate ? 'immediate' : 'suspicious');
+    
     useEffect(() => {
-        // Create pulsing animation - subtle pulse for smaller beacons
         const pulse = Animated.loop(
             Animated.sequence([
                 Animated.timing(pulseAnim, {
@@ -106,7 +108,6 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
             ])
         );
         
-        // Create opacity animation
         const opacity = Animated.loop(
             Animated.sequence([
                 Animated.timing(opacityAnim, {
@@ -130,6 +131,19 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
             opacity.stop();
         };
     }, []);
+
+    const ringStyle = beaconKind === 'immediate' ? styles.beaconRingDanger
+        : beaconKind === 'report' ? styles.beaconRingReport
+        : styles.beaconRingSuspicious;
+    const glowStyle = beaconKind === 'immediate' ? styles.beaconGlowDanger
+        : beaconKind === 'report' ? styles.beaconGlowReport
+        : styles.beaconGlowSuspicious;
+    const coreStyle = beaconKind === 'immediate' ? styles.beaconCoreDanger
+        : beaconKind === 'report' ? styles.beaconCoreReport
+        : styles.beaconCoreSuspicious;
+    const innerStyle = beaconKind === 'immediate' ? styles.beaconInnerDanger
+        : beaconKind === 'report' ? styles.beaconInnerReport
+        : styles.beaconInnerSuspicious;
     
     return (
         <Animated.View 
@@ -146,7 +160,7 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
             <Animated.View
                 style={[
                     styles.beaconRing,
-                    hazard.is_immediate ? styles.beaconRingDanger : styles.beaconRingSuspicious,
+                    ringStyle,
                     {
                         opacity: opacityAnim,
                         transform: [{ scale: pulseAnim }],
@@ -157,7 +171,7 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
             <Animated.View
                 style={[
                     styles.beaconGlow,
-                    hazard.is_immediate ? styles.beaconGlowDanger : styles.beaconGlowSuspicious,
+                    glowStyle,
                     {
                         opacity: opacityAnim,
                     }
@@ -167,14 +181,14 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
             <View
                 style={[
                     styles.beaconCore,
-                    hazard.is_immediate ? styles.beaconCoreDanger : styles.beaconCoreSuspicious,
+                    coreStyle,
                 ]}
             />
             {/* Inner highlight */}
             <View
                 style={[
                     styles.beaconInner,
-                    hazard.is_immediate ? styles.beaconInnerDanger : styles.beaconInnerSuspicious,
+                    innerStyle,
                 ]}
             />
         </Animated.View>
@@ -814,7 +828,7 @@ export default function MapScreen() {
                                 }}
                                 anchor={{ x: 0.5, y: 0.5 }}
                                 tracksViewChanges={true}
-                                title={hazard.is_immediate ? `Danger: ${hazard.type}` : 'Suspicious Activity'}
+                                title={hazard.is_immediate ? `Danger: ${hazard.type}` : hazard.beacon_kind === 'report' ? `Report: ${hazard.type}` : 'Suspicious Activity'}
                                 description={`Detected at ${new Date(hazard.detected_at).toLocaleTimeString()}`}
                             >
                                 <AnimatedBeacon hazard={hazard} />
@@ -1595,6 +1609,41 @@ const styles = StyleSheet.create({
     beaconInnerSuspicious: {
         backgroundColor: '#ffffff',
         shadowColor: '#ffcc00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+        elevation: 5,
+    },
+    // Purple beacon styles - User Reported Crimes (validated)
+    beaconRingReport: {
+        borderColor: '#a855f7',
+        backgroundColor: 'transparent',
+        shadowColor: '#a855f7',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 7,
+        elevation: 7,
+    },
+    beaconGlowReport: {
+        backgroundColor: '#a855f7',
+        shadowColor: '#a855f7',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    beaconCoreReport: {
+        backgroundColor: '#a855f7',
+        borderColor: '#c084fc',
+        shadowColor: '#a855f7',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+        elevation: 6,
+    },
+    beaconInnerReport: {
+        backgroundColor: '#ffffff',
+        shadowColor: '#a855f7',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 1,
         shadowRadius: 6,

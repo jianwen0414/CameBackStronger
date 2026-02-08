@@ -366,6 +366,28 @@ h1, h2, h3, h4, h5, h6 {
   animation: beacon-core-pulse-red 1.5s ease-in-out infinite;
 }
 
+.beacon-blue-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00aaff;
+  box-shadow: 
+    0 0 10px #00aaff,
+    0 0 20px rgba(0, 170, 255, 0.6);
+  animation: beacon-core-pulse-blue 2s ease-in-out infinite;
+}
+
+.beacon-purple-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #a855f7;
+  box-shadow: 
+    0 0 10px #a855f7,
+    0 0 20px rgba(168, 85, 247, 0.6);
+  animation: beacon-core-pulse-purple 2s ease-in-out infinite;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -409,6 +431,202 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 1px;
   font-family: var(--font-mono);
+}
+
+/* ============================================================================
+   Blue Beacon (CCTV Camera) - Normal Activity / Real-time Stream
+   ============================================================================ */
+
+.map-beacon--cctv .beacon-glow {
+  background: radial-gradient(circle, rgba(0, 170, 255, 0.35) 0%, transparent 70%);
+  animation: beacon-glow-pulse-blue 3s ease-in-out infinite;
+}
+
+.map-beacon--cctv .beacon-ring {
+  border-color: #00aaff;
+  animation: beacon-ring-pulse-blue 3s ease-out infinite;
+}
+
+.map-beacon--cctv .beacon-ring:nth-child(2) {
+  animation-delay: 0s;
+}
+
+.map-beacon--cctv .beacon-ring:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+.map-beacon--cctv .beacon-core {
+  background: #00aaff;
+  color: #00aaff;
+  animation: beacon-core-pulse-blue 2.5s ease-in-out infinite;
+  box-shadow: 
+    0 0 10px #00aaff,
+    0 0 20px #00aaff,
+    0 0 30px #00aaff,
+    0 0 40px rgba(0, 170, 255, 0.5);
+}
+
+.map-beacon--cctv .beacon-core-inner {
+  box-shadow: 
+    0 0 5px #00aaff,
+    0 0 10px #00aaff,
+    0 0 15px rgba(0, 170, 255, 0.8);
+}
+
+.map-beacon--cctv .map-beacon-label {
+  background: rgba(0, 170, 255, 0.2);
+  border: 1px solid rgba(0, 170, 255, 0.5);
+  color: #00aaff;
+  box-shadow: 
+    0 0 10px rgba(0, 170, 255, 0.5),
+    inset 0 0 10px rgba(0, 170, 255, 0.2);
+}
+
+.map-beacon--cctv .beacon-sparkle {
+  background: #00aaff;
+  box-shadow: 
+    0 0 4px #00aaff,
+    0 0 8px rgba(0, 170, 255, 0.6);
+}
+
+/* Blue Beacon Animations */
+@keyframes beacon-glow-pulse-blue {
+  0%, 100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+@keyframes beacon-ring-pulse-blue {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+}
+
+@keyframes beacon-core-pulse-blue {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0.9;
+  }
+}
+
+/* ============================================================================
+   Purple Beacon (User Reported Crime)
+   ============================================================================ */
+
+.map-beacon--report .beacon-glow {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%);
+  animation: beacon-glow-pulse-purple 2.5s ease-in-out infinite;
+}
+
+.map-beacon--report .beacon-ring {
+  border-color: #a855f7;
+  animation: beacon-ring-pulse-purple 2.5s ease-out infinite;
+}
+
+.map-beacon--report .beacon-ring:nth-child(2) {
+  animation-delay: 0s;
+}
+
+.map-beacon--report .beacon-ring:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+.map-beacon--report .beacon-core {
+  background: #a855f7;
+  color: #a855f7;
+  animation: beacon-core-pulse-purple 2s ease-in-out infinite;
+  box-shadow: 
+    0 0 10px #a855f7,
+    0 0 20px #a855f7,
+    0 0 30px #a855f7,
+    0 0 40px rgba(168, 85, 247, 0.5);
+}
+
+.map-beacon--report .beacon-beam {
+  color: #a855f7;
+  animation: beacon-beam-pulse-purple 2s ease-in-out infinite;
+}
+
+.map-beacon--report .beacon-core-inner {
+  box-shadow: 
+    0 0 5px #a855f7,
+    0 0 10px #a855f7,
+    0 0 15px rgba(168, 85, 247, 0.8);
+}
+
+.map-beacon--report .map-beacon-label {
+  background: rgba(168, 85, 247, 0.2);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #a855f7;
+  box-shadow: 
+    0 0 10px rgba(168, 85, 247, 0.5),
+    inset 0 0 10px rgba(168, 85, 247, 0.2);
+}
+
+.map-beacon--report .beacon-sparkle {
+  background: #a855f7;
+  box-shadow: 
+    0 0 4px #a855f7,
+    0 0 8px rgba(168, 85, 247, 0.6);
+}
+
+/* Purple Beacon Animations */
+@keyframes beacon-glow-pulse-purple {
+  0%, 100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+@keyframes beacon-ring-pulse-purple {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+}
+
+@keyframes beacon-core-pulse-purple {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.9;
+  }
+}
+
+@keyframes beacon-beam-pulse-purple {
+  0%, 100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scaleY(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scaleY(1.15);
+  }
 }
 
 /* ============================================================================

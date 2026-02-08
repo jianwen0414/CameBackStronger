@@ -6,6 +6,7 @@ from supabase import create_client, Client
 from functools import lru_cache
 from typing import Optional
 import math
+import json
 
 from config import get_settings
 
@@ -343,3 +344,226 @@ async def verify_user_token(access_token: str) -> Optional[dict]:
         return None
     
     return None
+
+
+# ============================================================================
+# CCTV Camera Operations
+# ============================================================================
+
+async def get_all_cctv_cameras() -> list[dict]:
+    """
+    Get all active CCTV cameras for dashboard display.
+    Uses RPC function for coordinate extraction.
+    """
+    client = get_supabase_client()
+    
+    try:
+        result = client.rpc("get_all_cctv").execute()
+        return result.data or []
+    except Exception:
+        # Fallback to direct query
+        result = client.table("cctv_cameras")\
+            .select("*")\
+            .eq("is_active", True)\
+            .order("camera_name")\
+            .execute()
+        return result.data or []
+
+
+async def insert_cctv_camera(
+    camera_name: str,
+    lat: float,
+    long: float,
+    location_name: Optional[str] = None,
+    stream_url: Optional[str] = None,
+    zone_id: Optional[str] = None
+) -> dict:
+    """Insert a new CCTV camera."""
+    client = get_supabase_client()
+    
+    point = make_point_wkt(lat, long)
+    
+    data = {
+        "camera_name": camera_name,
+        "coordinates": point,
+        "is_active": True,
+    }
+    if location_name:
+        data["location_name"] = location_name
+    if stream_url:
+        data["stream_url"] = stream_url
+    if zone_id:
+        data["zone_id"] = zone_id
+    
+    try:
+        result = client.table("cctv_cameras").insert(data).execute()
+        if not result.data:
+            raise Exception("Insert returned no data")
+        return result.data[0]
+    except Exception as e:
+        raise Exception(f"Failed to insert CCTV camera: {str(e)}")
+
+
+async def find_nearby_cctv(
+    lat: float,
+    long: float,
+    radius_meters: float = 2000
+) -> list[dict]:
+    """Find CCTV cameras within radius using RPC."""
+    client = get_supabase_client()
+    
+    try:
+        result = client.rpc(
+            "find_nearby_cctv",
+            {"query_lat": lat, "query_long": long, "radius_m": radius_meters}
+        ).execute()
+        return result.data or []
+    except Exception as e:
+        raise Exception(f"Failed to find nearby CCTV: {str(e)}")
+
+
+# ============================================================================
+# User-Reported Crime Operations
+# ============================================================================
+
+async def insert_user_reported_crime(
+    lat: float,
+    long: float,
+    crime_type: str,
+    evidence_video_url: str,
+    reporter_id: Optional[str] = None,
+    description: Optional[str] = None,
+    video_duration_seconds: Optional[float] = None,
+    location_name: Optional[str] = None
+) -> dict:
+    """
+    Insert a new user-reported crime.
+    
+    Returns the inserted record.
+    """
+    client = get_supabase_client()
+    
+    point = make_point_wkt(lat, long)
+    
+    data = {
+        "coordinates": point,
+        "crime_type": crime_type,
+        "evidence_video_url": evidence_video_url,
+        "validation_status": "pending",
+    }
+    
+    if reporter_id:
+        data["reporter_id"] = reporter_id
+    if description:
+        data["description"] = description
+    if video_duration_seconds:
+        data["video_duration_seconds"] = video_duration_seconds
+    if location_name:
+        data["location_name"] = location_name
+    
+    try:
+        result = client.table("user_reported_crimes").insert(data).execute()
+        if not result.data:
+            raise Exception("Insert returned no data")
+        return result.data[0]
+    except Exception as e:
+        raise Exception(f"Failed to insert user crime report: {str(e)}")
+
+
+async def get_all_reported_crimes(
+    include_all: bool = True,
+    limit: int = 100
+) -> list[dict]:
+    """
+    Get all user-reported crimes.
+    If include_all is False, only returns validated ones (for mobile).
+    """
+    client = get_supabase_client()
+    
+    try:
+        result = client.rpc("get_all_reported_crimes").execute()
+        data = result.data or []
+        if not include_all:
+            data = [d for d in data if d.get("validation_status") == "validated"]
+        return data[:limit]
+    except Exception:
+        # Fallback to direct query
+        query = client.table("user_reported_crimes")\
+            .select("*")\
+            .order("reported_at", desc=True)\
+            .limit(limit)
+        
+        if not include_all:
+            query = query.eq("validation_status", "validated")
+        
+        result = query.execute()
+        return result.data or []
+
+
+async def find_nearby_reported_crimes(
+    lat: float,
+    long: float,
+    radius_meters: float = 2000,
+    include_all: bool = False
+) -> list[dict]:
+    """Find user-reported crimes within radius."""
+    client = get_supabase_client()
+    
+    try:
+        result = client.rpc(
+            "find_nearby_reported_crimes",
+            {
+                "query_lat": lat,
+                "query_long": long,
+                "radius_m": radius_meters,
+                "include_all": include_all
+            }
+        ).execute()
+        return result.data or []
+    except Exception as e:
+        raise Exception(f"Failed to find nearby reported crimes: {str(e)}")
+
+
+async def update_crime_report_validation(
+    report_id: str,
+    validation_status: str,
+    classification_result: Optional[dict] = None,
+    classified_crime_type: Optional[str] = None,
+    classification_confidence: Optional[float] = None,
+    gemini_analysis: Optional[str] = None,
+    gemini_justification: Optional[str] = None,
+    validated_by: Optional[str] = None
+) -> dict:
+    """
+    Update a crime report with classification and validation results.
+    """
+    client = get_supabase_client()
+    
+    data = {
+        "validation_status": validation_status,
+        "updated_at": "now()",
+    }
+    
+    if classification_result is not None:
+        data["classification_result"] = json.dumps(classification_result)
+    if classified_crime_type:
+        data["classified_crime_type"] = classified_crime_type
+    if classification_confidence is not None:
+        data["classification_confidence"] = classification_confidence
+    if gemini_analysis:
+        data["gemini_analysis"] = gemini_analysis
+    if gemini_justification:
+        data["gemini_justification"] = gemini_justification
+    if validated_by:
+        data["validated_by"] = validated_by
+    
+    try:
+        result = client.table("user_reported_crimes")\
+            .update(data)\
+            .eq("id", report_id)\
+            .execute()
+        if not result.data:
+            raise Exception("Update returned no data")
+        return result.data[0]
+    except Exception as e:
+        raise Exception(f"Failed to update crime report: {str(e)}")

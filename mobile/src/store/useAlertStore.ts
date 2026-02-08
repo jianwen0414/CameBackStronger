@@ -1,9 +1,11 @@
 /**
  * NightWalk Mobile - Alert Store (Zustand)
+ * Now includes validated user-reported crimes as purple beacons
  */
 import { create } from 'zustand';
 import Config from 'react-native-config';
 import { supabase, HazardData, parsePostGISPoint } from '../lib/supabase';
+import type { BeaconKind } from '../lib/supabase';
 
 const API_BASE_URL = (Config.API_BASE_URL || '').replace(/\/+$/, '');
 
@@ -40,10 +42,10 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                         const data = await response.json();
                         const hazards: HazardData[] = (data.hazards || []).map((h: any) => ({
                             ...h,
-                            // Ensure coordinates are in correct format
                             coordinates: h.coordinates?.lat && h.coordinates?.long
                                 ? { lat: h.coordinates.lat, long: h.coordinates.long }
                                 : { lat: h.lat || 0, long: h.long || 0 },
+                            beacon_kind: h.beacon_kind || (h.is_immediate ? 'immediate' : 'suspicious') as BeaconKind,
                         })).filter((h: HazardData) => h.coordinates.lat && h.coordinates.long);
 
                         console.log('Fetched hazards from API:', hazards.length);
@@ -79,12 +81,19 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                 }
             );
 
-            if (dangerError) {
-                console.error('Error fetching immediate dangers:', dangerError);
-            }
-            if (suspiciousError) {
-                console.error('Error fetching suspicious logs:', suspiciousError);
-            }
+            // Fetch validated user-reported crimes (purple beacons)
+            const { data: reportedCrimes, error: reportError } = await supabase.rpc(
+                'find_nearby_reported_crimes',
+                {
+                    query_lat: lat,
+                    query_long: long,
+                    radius_m: radius,
+                }
+            );
+
+            if (dangerError) console.error('Error fetching immediate dangers:', dangerError);
+            if (suspiciousError) console.error('Error fetching suspicious logs:', suspiciousError);
+            if (reportError) console.error('Error fetching reported crimes:', reportError);
 
             // Combine and format hazards
             const hazards: HazardData[] = [];
@@ -92,7 +101,6 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             // Process immediate dangers
             if (immediateDangers && Array.isArray(immediateDangers)) {
                 immediateDangers.forEach((d: any) => {
-                    // Ensure lat and long are valid numbers
                     const lat = typeof d.lat === 'number' ? d.lat : parseFloat(d.lat);
                     const long = typeof d.long === 'number' ? d.long : parseFloat(d.long);
                     
@@ -101,13 +109,12 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                             id: d.id,
                             coordinates: { lat, long },
                             type: d.activity_type || 'danger',
-                            distance_meters: 0, // Will be calculated if needed
+                            distance_meters: 0,
                             bearing_degrees: 0,
                             is_immediate: true,
                             detected_at: d.detected_at,
+                            beacon_kind: 'immediate',
                         });
-                    } else {
-                        console.warn('Invalid coordinates for danger:', d.id, 'lat:', d.lat, 'long:', d.long);
                     }
                 });
             }
@@ -115,7 +122,6 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             // Process suspicious logs
             if (suspiciousLogs && Array.isArray(suspiciousLogs)) {
                 suspiciousLogs.forEach((s: any) => {
-                    // Ensure lat and long are valid numbers
                     const lat = typeof s.lat === 'number' ? s.lat : parseFloat(s.lat);
                     const long = typeof s.long === 'number' ? s.long : parseFloat(s.long);
                     
@@ -128,23 +134,36 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                             bearing_degrees: 0,
                             is_immediate: false,
                             detected_at: s.detected_at,
+                            beacon_kind: 'suspicious',
                         });
-                    } else {
-                        console.warn('Invalid coordinates for suspicious:', s.id, 'lat:', s.lat, 'long:', s.long);
                     }
                 });
             }
 
-            console.log('Fetched hazards from Supabase:', hazards.length);
-            if (hazards.length > 0) {
-                console.log('Sample hazard coordinates:', hazards[0].coordinates);
-                console.log('All hazard coordinates:', hazards.map(h => ({ 
-                    id: h.id, 
-                    lat: h.coordinates.lat, 
-                    long: h.coordinates.long,
-                    isValid: !isNaN(h.coordinates.lat) && !isNaN(h.coordinates.long)
-                })));
+            // Process validated user-reported crimes (purple beacons — only validated ones show on mobile)
+            if (reportedCrimes && Array.isArray(reportedCrimes)) {
+                reportedCrimes
+                    .filter((r: any) => r.validation_status === 'validated')
+                    .forEach((r: any) => {
+                        const lat = typeof r.lat === 'number' ? r.lat : parseFloat(r.lat);
+                        const long = typeof r.long === 'number' ? r.long : parseFloat(r.long);
+
+                        if (!isNaN(lat) && !isNaN(long) && lat !== 0 && long !== 0) {
+                            hazards.push({
+                                id: r.id,
+                                coordinates: { lat, long },
+                                type: r.crime_type || 'report',
+                                distance_meters: typeof r.distance_meters === 'number' ? r.distance_meters : 0,
+                                bearing_degrees: 0,
+                                is_immediate: false,
+                                detected_at: r.reported_at,
+                                beacon_kind: 'report',
+                            });
+                        }
+                    });
             }
+
+            console.log('Fetched hazards from Supabase:', hazards.length);
             set({ nearbyHazards: hazards, isLoading: false });
             get().calculateZoneSafety();
         } catch (error) {
@@ -168,21 +187,19 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                 },
                 payload => {
                     const newDanger = payload.new;
-                    // Only add if active
                     if (newDanger.is_active) {
                         const coords = parsePostGISPoint(newDanger.coordinates);
-
                         if (coords) {
                             const hazard: HazardData = {
                                 id: newDanger.id,
                                 coordinates: coords,
                                 type: newDanger.activity_type,
-                                distance_meters: 0, // Will be calculated on next fetch
+                                distance_meters: 0,
                                 bearing_degrees: 0,
                                 is_immediate: true,
                                 detected_at: newDanger.detected_at,
+                                beacon_kind: 'immediate',
                             };
-
                             set(state => ({
                                 nearbyHazards: [hazard, ...state.nearbyHazards],
                             }));
@@ -203,13 +220,11 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                     const coords = parsePostGISPoint(updatedDanger.coordinates);
 
                     set(state => {
-                        // Remove if inactive
                         if (!updatedDanger.is_active) {
                             return {
                                 nearbyHazards: state.nearbyHazards.filter(h => h.id !== updatedDanger.id),
                             };
                         }
-                        // Update existing if coords available
                         if (coords) {
                             const existingIndex = state.nearbyHazards.findIndex(h => h.id === updatedDanger.id);
                             if (existingIndex >= 0) {
@@ -222,7 +237,6 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                                 };
                                 return { nearbyHazards: updated };
                             }
-                            // Add if not present
                             const hazard: HazardData = {
                                 id: updatedDanger.id,
                                 coordinates: coords,
@@ -231,6 +245,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                                 bearing_degrees: 0,
                                 is_immediate: true,
                                 detected_at: updatedDanger.detected_at,
+                                beacon_kind: 'immediate',
                             };
                             return { nearbyHazards: [hazard, ...state.nearbyHazards] };
                         }
@@ -254,6 +269,49 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                     get().calculateZoneSafety();
                 },
             )
+            // Subscribe to validated user-reported crimes
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'user_reported_crimes',
+                    filter: 'validation_status=eq.validated',
+                },
+                payload => {
+                    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                        const report = payload.new;
+                        if (report.validation_status === 'validated' && report.lat && report.long) {
+                            set(state => {
+                                const existing = state.nearbyHazards.findIndex(h => h.id === report.id);
+                                const newHazard: HazardData = {
+                                    id: report.id,
+                                    coordinates: { lat: report.lat, long: report.long },
+                                    type: report.crime_type || 'report',
+                                    distance_meters: 0,
+                                    bearing_degrees: 0,
+                                    is_immediate: false,
+                                    detected_at: report.reported_at,
+                                    beacon_kind: 'report',
+                                };
+                                if (existing >= 0) {
+                                    const updated = [...state.nearbyHazards];
+                                    updated[existing] = newHazard;
+                                    return { nearbyHazards: updated };
+                                }
+                                return { nearbyHazards: [newHazard, ...state.nearbyHazards] };
+                            });
+                            get().calculateZoneSafety();
+                        }
+                    }
+                    if (payload.eventType === 'DELETE') {
+                        set(state => ({
+                            nearbyHazards: state.nearbyHazards.filter(h => h.id !== payload.old.id),
+                        }));
+                        get().calculateZoneSafety();
+                    }
+                },
+            )
             .subscribe();
 
         return () => {
@@ -269,17 +327,14 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             return;
         }
 
-        // Calculate safety based on nearby hazards
-        // More severe penalties for immediate dangers
         let safetyScore = 100;
 
         nearbyHazards.forEach(hazard => {
-            // Use distance if available, otherwise assume close (worst case)
             const distance = hazard.distance_meters || 0;
             const distanceFactor = Math.max(0, 1 - distance / 500);
             
-            // Immediate dangers are more severe
-            const severity = hazard.is_immediate ? 35 : 15;
+            // Immediate dangers most severe, reports moderate, suspicious low
+            const severity = hazard.is_immediate ? 35 : hazard.beacon_kind === 'report' ? 20 : 15;
             safetyScore -= severity * distanceFactor;
         });
 

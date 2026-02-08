@@ -5,12 +5,13 @@ import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, StyleSheet, StatusBar } from 'react-native';
-import { Scan, Map, Bell } from 'lucide-react-native';
+import { Scan, Map, Bell, FileWarning } from 'lucide-react-native';
 
 import AuthScreen from './src/screens/AuthScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
 import MapScreen from './src/screens/MapScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
+import ReportCrimeScreen from './src/screens/ReportCrimeScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -72,6 +73,15 @@ function MainApp() {
               <TabIcon Icon={Bell} focused={focused} color={color} />
             ),
             tabBarBadge: undefined,
+          }}
+        />
+        <Tab.Screen
+          name="Report"
+          component={ReportCrimeScreen}
+          options={{
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon Icon={FileWarning} focused={focused} color={color} />
+            ),
           }}
         />
       </Tab.Navigator>

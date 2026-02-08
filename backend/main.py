@@ -19,14 +19,28 @@ from schemas import (
     AlertCreatedResponse,
     HealthResponse,
     AlertType,
-    UserRole
+    UserRole,
+    UserReportCrimeRequest,
+    ReportCreatedResponse,
+    CCTVCreateRequest,
+    CCTVCameraResponse,
+    CCTVCamerasListResponse,
+    UserReportedCrimeResponse,
+    UserReportedCrimesListResponse,
 )
 from database import (
     insert_immediate_danger,
     insert_suspicious_log,
     find_nearby_hazards,
     get_all_alerts,
-    verify_user_token
+    verify_user_token,
+    get_all_cctv_cameras,
+    insert_cctv_camera,
+    find_nearby_cctv,
+    insert_user_reported_crime,
+    get_all_reported_crimes,
+    find_nearby_reported_crimes,
+    update_crime_report_validation,
 )
 
 
@@ -246,6 +260,178 @@ async def verify_token(
         raise HTTPException(status_code=401, detail="Invalid token")
     
     return {"valid": True, "user_id": user_info["user_id"], "role": user_info["role"]}
+
+
+# ============================================================================
+# CCTV Camera Endpoints
+# ============================================================================
+
+@app.get("/cctv/cameras", response_model=CCTVCamerasListResponse, tags=["CCTV"])
+async def list_cctv_cameras():
+    """
+    Get all active CCTV cameras for the web dashboard.
+    Each CCTV camera corresponds to a blue beacon on the God View.
+    """
+    try:
+        cameras = await get_all_cctv_cameras()
+        camera_list = [
+            CCTVCameraResponse(
+                id=str(c.get("id", "")),
+                camera_name=c.get("camera_name", ""),
+                location_name=c.get("location_name"),
+                lat=c.get("lat", 0),
+                long=c.get("long", 0),
+                stream_url=c.get("stream_url"),
+                is_active=c.get("is_active", True),
+                last_heartbeat=c.get("last_heartbeat"),
+            )
+            for c in cameras
+        ]
+        return CCTVCamerasListResponse(cameras=camera_list, total_count=len(camera_list))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch CCTV cameras: {str(e)}")
+
+
+@app.post("/cctv/cameras", tags=["CCTV"])
+async def create_cctv_camera(camera: CCTVCreateRequest):
+    """Register a new CCTV camera."""
+    try:
+        result = await insert_cctv_camera(
+            camera_name=camera.camera_name,
+            lat=camera.lat,
+            long=camera.long,
+            location_name=camera.location_name,
+            stream_url=camera.stream_url,
+            zone_id=camera.zone_id,
+        )
+        return {"success": True, "camera_id": result.get("id", "unknown"), "message": "CCTV camera registered"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to register CCTV camera: {str(e)}")
+
+
+@app.get("/cctv/nearby", tags=["CCTV"])
+async def get_nearby_cctv(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    long: Annotated[float, Query(ge=-180, le=180)],
+    radius: Annotated[float, Query(gt=0, le=5000)] = 2000.0
+):
+    """Find CCTV cameras within specified radius."""
+    try:
+        cameras = await find_nearby_cctv(lat, long, radius)
+        return {"cameras": cameras, "total_count": len(cameras)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to find nearby CCTV: {str(e)}")
+
+
+# ============================================================================
+# User Crime Report Endpoints
+# ============================================================================
+
+@app.post("/reports/crime", response_model=ReportCreatedResponse, tags=["Reports"])
+async def submit_crime_report(report: UserReportCrimeRequest):
+    """
+    Submit a user-reported crime from the mobile app.
+    
+    The report will be created with 'pending' status and later processed
+    by the video classification model + Gemini AI analysis.
+    """
+    try:
+        result = await insert_user_reported_crime(
+            lat=report.lat,
+            long=report.long,
+            crime_type=report.crime_type.value,
+            evidence_video_url=report.evidence_video_url,
+            reporter_id=report.reporter_id,
+            description=report.description,
+            video_duration_seconds=report.video_duration_seconds,
+        )
+        
+        return ReportCreatedResponse(
+            success=True,
+            report_id=str(result.get("id", "unknown")),
+            message=f"Crime report submitted. Type: {report.crime_type.value}. Awaiting validation.",
+            validation_status="pending"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit crime report: {str(e)}")
+
+
+@app.get("/reports/crimes", response_model=UserReportedCrimesListResponse, tags=["Reports"])
+async def list_reported_crimes(
+    include_all: Annotated[bool, Query(description="Include all statuses (True for web, False for mobile)")] = True,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100
+):
+    """
+    Get user-reported crimes.
+    
+    - Web dashboard (include_all=True): Returns all reports regardless of status
+    - Mobile app (include_all=False): Returns only validated reports (purple beacons)
+    """
+    try:
+        reports = await get_all_reported_crimes(include_all=include_all, limit=limit)
+        report_list = [
+            UserReportedCrimeResponse(
+                id=str(r.get("id", "")),
+                reporter_id=str(r.get("reporter_id", "")) if r.get("reporter_id") else None,
+                lat=r.get("lat", 0),
+                long=r.get("long", 0),
+                crime_type=r.get("crime_type", ""),
+                description=r.get("description"),
+                evidence_video_url=r.get("evidence_video_url", ""),
+                classified_crime_type=r.get("classified_crime_type"),
+                classification_confidence=r.get("classification_confidence"),
+                gemini_analysis=r.get("gemini_analysis"),
+                gemini_justification=r.get("gemini_justification"),
+                validation_status=r.get("validation_status", "pending"),
+                reported_at=r.get("reported_at", datetime.utcnow()),
+            )
+            for r in reports
+        ]
+        return UserReportedCrimesListResponse(reports=report_list, total_count=len(report_list))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch crime reports: {str(e)}")
+
+
+@app.get("/reports/nearby", tags=["Reports"])
+async def get_nearby_reported_crimes(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    long: Annotated[float, Query(ge=-180, le=180)],
+    radius: Annotated[float, Query(gt=0, le=5000)] = 2000.0,
+    include_all: Annotated[bool, Query()] = False
+):
+    """Find user-reported crimes within specified radius."""
+    try:
+        reports = await find_nearby_reported_crimes(lat, long, radius, include_all)
+        return {"reports": reports, "total_count": len(reports)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to find nearby reports: {str(e)}")
+
+
+@app.patch("/reports/crime/{report_id}/validate", tags=["Reports"])
+async def validate_crime_report(
+    report_id: str,
+    validation_status: str = Query(..., description="New validation status"),
+    classified_crime_type: str = Query(None),
+    classification_confidence: float = Query(None),
+    gemini_analysis: str = Query(None),
+    gemini_justification: str = Query(None),
+):
+    """
+    Update a crime report with validation results.
+    Called by the video classification pipeline or admin review.
+    """
+    try:
+        result = await update_crime_report_validation(
+            report_id=report_id,
+            validation_status=validation_status,
+            classified_crime_type=classified_crime_type,
+            classification_confidence=classification_confidence,
+            gemini_analysis=gemini_analysis,
+            gemini_justification=gemini_justification,
+        )
+        return {"success": True, "report_id": report_id, "validation_status": validation_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to validate report: {str(e)}")
 
 
 # ============================================================================

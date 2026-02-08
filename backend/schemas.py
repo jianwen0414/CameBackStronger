@@ -3,7 +3,7 @@ NightWalk API Schemas
 Pydantic models for request/response validation.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -32,6 +32,31 @@ class UserRole(str, Enum):
     CITIZEN = "citizen"
     ADMIN = "admin"
     IOT_DEVICE = "iot_device"
+
+
+class CrimeType(str, Enum):
+    """Types of crimes users can report."""
+    ABUSE = "abuse"
+    ARREST = "arrest"
+    ARSON = "arson"
+    ASSAULT = "assault"
+    BURGLARY = "burglary"
+    EXPLOSION = "explosion"
+    FIGHTING = "fighting"
+    ROAD_ACCIDENTS = "road_accidents"
+    ROBBERY = "robbery"
+    SHOOTING = "shooting"
+    STEALING = "stealing"
+    VANDALISM = "vandalism"
+
+
+class ValidationStatus(str, Enum):
+    """Status of user-reported crime validation."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    VALIDATED = "validated"
+    REJECTED = "rejected"
+    REVIEWED = "reviewed"
 
 
 # ============================================================================
@@ -66,6 +91,27 @@ class NearbyQueryRequest(BaseModel):
 class AuthLoginRequest(BaseModel):
     """Login request with Supabase auth token."""
     access_token: str = Field(..., description="Supabase JWT access token")
+
+
+class UserReportCrimeRequest(BaseModel):
+    """Request from mobile app user to report a crime."""
+    lat: float = Field(..., ge=-90, le=90, description="Latitude coordinate")
+    long: float = Field(..., ge=-180, le=180, description="Longitude coordinate")
+    crime_type: CrimeType = Field(..., description="Type of crime being reported")
+    description: Optional[str] = Field(None, description="Description of the incident")
+    evidence_video_url: str = Field(..., description="URL to the uploaded video evidence")
+    video_duration_seconds: Optional[float] = Field(None, ge=7.0, description="Video duration (min 7 seconds)")
+    reporter_id: Optional[str] = Field(None, description="Reporter user ID")
+
+
+class CCTVCreateRequest(BaseModel):
+    """Request to register a new CCTV camera."""
+    camera_name: str = Field(..., description="Camera identifier name")
+    location_name: Optional[str] = Field(None, description="Human-readable location")
+    lat: float = Field(..., ge=-90, le=90, description="Latitude coordinate")
+    long: float = Field(..., ge=-180, le=180, description="Longitude coordinate")
+    stream_url: Optional[str] = Field(None, description="URL for live stream or sample video")
+    zone_id: Optional[str] = Field(None, description="Zone grouping identifier")
 
 
 # ============================================================================
@@ -140,3 +186,60 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
     version: str = "1.0.0"
+
+
+# ============================================================================
+# CCTV Response Models
+# ============================================================================
+
+class CCTVCameraResponse(BaseModel):
+    """Single CCTV camera info."""
+    id: str
+    camera_name: str
+    location_name: Optional[str] = None
+    lat: float
+    long: float
+    stream_url: Optional[str] = None
+    is_active: bool
+    last_heartbeat: Optional[datetime] = None
+
+
+class CCTVCamerasListResponse(BaseModel):
+    """List of CCTV cameras."""
+    cameras: List[CCTVCameraResponse]
+    total_count: int
+
+
+# ============================================================================
+# User Crime Report Response Models
+# ============================================================================
+
+class UserReportedCrimeResponse(BaseModel):
+    """Single user-reported crime entry."""
+    id: str
+    reporter_id: Optional[str] = None
+    lat: float
+    long: float
+    crime_type: str
+    description: Optional[str] = None
+    evidence_video_url: str
+    classified_crime_type: Optional[str] = None
+    classification_confidence: Optional[float] = None
+    gemini_analysis: Optional[str] = None
+    gemini_justification: Optional[str] = None
+    validation_status: str
+    reported_at: datetime
+
+
+class UserReportedCrimesListResponse(BaseModel):
+    """List of user-reported crimes."""
+    reports: List[UserReportedCrimeResponse]
+    total_count: int
+
+
+class ReportCreatedResponse(BaseModel):
+    """Response after creating a user crime report."""
+    success: bool
+    report_id: str
+    message: str
+    validation_status: str

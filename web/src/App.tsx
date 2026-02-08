@@ -9,7 +9,7 @@ import GodView from './components/GodView';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import EvidenceModal from './components/EvidenceModal';
 import { useAlertStore } from './store/useAlertStore';
-import type { ImmediateDanger, SuspiciousLog } from './lib/supabase';
+import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from './lib/supabase';
 import { Landing } from './pages/Landing';
 
 type Tab = 'godview' | 'analytics';
@@ -20,8 +20,11 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('godview');
   const { selectAlert, openModal, immediateDangers } = useAlertStore();
 
-  const handleAlertClick = useCallback((alert: ImmediateDanger | SuspiciousLog) => {
-    selectAlert(alert);
+  const handleAlertClick = useCallback((
+    alert: ImmediateDanger | SuspiciousLog | CCTVCamera | UserReportedCrime,
+    type: BeaconType
+  ) => {
+    selectAlert(alert, type);
     openModal();
   }, [selectAlert, openModal]);
 
