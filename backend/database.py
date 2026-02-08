@@ -249,6 +249,35 @@ async def find_nearby_hazards(
                     "bearing": calculate_bearing(lat, long, row["lat"], row["long"])
                 })
         
+        # Query validated user-reported crimes (purple beacons)
+        try:
+            reported_result = client.rpc(
+                "find_nearby_reported_crimes",
+                {
+                    "query_lat": lat,
+                    "query_long": long,
+                    "radius_m": radius_meters,
+                    "include_all": False,  # Only validated
+                }
+            ).execute()
+
+            if reported_result.data:
+                for row in reported_result.data:
+                    hazards.append({
+                        "id": row["id"],
+                        "lat": row["lat"],
+                        "long": row["long"],
+                        "type": row.get("crime_type", "suspicious"),
+                        "is_immediate": False,
+                        "detected_at": row.get("reported_at", row.get("detected_at")),
+                        "evidence_url": row.get("evidence_video_url"),
+                        "distance": haversine_distance(lat, long, row["lat"], row["long"]),
+                        "bearing": calculate_bearing(lat, long, row["lat"], row["long"]),
+                        "beacon_kind": "report",
+                    })
+        except Exception as report_err:
+            print(f"Warning: Failed to fetch reported crimes in find_nearby_hazards: {report_err}")
+
         # Sort by distance
         hazards.sort(key=lambda x: x["distance"])
         

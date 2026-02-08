@@ -12,6 +12,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.6",
     "httpx>=0.26.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "transformers>=4.46.0",
+    "opencv-python-headless>=4.8.0",
+    "numpy>=1.24.0",
+    "google-genai>=1.0.0",
 ]
 
 [tool.uv]

@@ -10,12 +10,13 @@
  *   Purple → User-reported crime (NOT a CCTV) – completely different layout
  *            with report details, AI classification, Gemini analysis
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     X, AlertTriangle, Clock, MapPin, Play, Camera, Video,
     Users, Brain, CheckCircle, Shield, ChevronRight, Radio,
     Eye, Hash, Crosshair, FileText, Activity, Zap,
+    RefreshCw, Loader2, ShieldAlert, TrendingUp,
 } from 'lucide-react';
 import { useAlertStore } from '../store/useAlertStore';
 import type {
@@ -387,6 +388,26 @@ function SuspiciousDetailsPanel({ log }: { log: SuspiciousLog }) {
 // ============================================================================
 
 function ReportPanel({ report }: { report: UserReportedCrime }) {
+    const isProcessing = report.validation_status === 'processing';
+    const isPending = report.validation_status === 'pending';
+    const hasAIResults = !!report.classified_crime_type || !!report.gemini_analysis;
+
+    const severityFromJustification = (() => {
+        const j = report.gemini_justification?.toLowerCase() || '';
+        if (j.includes('severity: critical')) return 'critical';
+        if (j.includes('severity: high')) return 'high';
+        if (j.includes('severity: medium')) return 'medium';
+        if (j.includes('severity: low')) return 'low';
+        return null;
+    })();
+
+    const severityStyles: Record<string, { color: string; bg: string; border: string }> = {
+        critical: { color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-red-500/30' },
+        high: { color: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-500/30' },
+        medium: { color: 'text-yellow-400', bg: 'bg-yellow-500/15', border: 'border-yellow-500/30' },
+        low: { color: 'text-green-400', bg: 'bg-green-500/15', border: 'border-green-500/30' },
+    };
+
     return (
         <div className="px-4 pt-3 pb-1 space-y-3">
             {/* Report info */}
@@ -409,61 +430,151 @@ function ReportPanel({ report }: { report: UserReportedCrime }) {
                 </div>
             )}
 
-            {/* AI Analysis Section */}
-            <div className="flex items-center gap-2 pt-1">
-                <Brain className="w-3.5 h-3.5 text-[#a855f7]" />
-                <span className="text-[10px] font-mono text-[#a855f7] uppercase tracking-widest">AI Analysis</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-                {/* Classification */}
-                <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
-                    <div className="text-[10px] font-mono text-gray-500 uppercase mb-1.5">VideoMAE Classification</div>
-                    <div className="text-sm font-bold capitalize text-white mb-2">
-                        {report.classified_crime_type?.replace('_', ' ') || 'Pending…'}
+            {/* AI Processing Indicator */}
+            {(isProcessing || isPending) && !hasAIResults && (
+                <div className="rounded-lg border border-[#a855f7]/20 bg-[#a855f7]/5 p-4">
+                    <div className="flex items-center gap-3">
+                        {isProcessing ? (
+                            <Loader2 className="w-5 h-5 text-[#a855f7] animate-spin" />
+                        ) : (
+                            <Clock className="w-5 h-5 text-[#a855f7] animate-pulse" />
+                        )}
+                        <div>
+                            <div className="text-sm font-semibold text-[#a855f7]">
+                                {isProcessing ? 'AI Analysis In Progress' : 'Awaiting AI Analysis'}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                                {isProcessing
+                                    ? 'VideoMAE classification and Gemini analysis are processing the evidence video…'
+                                    : 'This report is queued for automated video classification and AI analysis.'}
+                            </div>
+                        </div>
                     </div>
-                    {report.classification_confidence != null && (
-                        <>
-                            <div className="flex justify-between text-[10px] mb-1">
-                                <span className="text-gray-500">Confidence</span>
-                                <span className={`font-bold ${report.classification_confidence > 0.8
-                                    ? 'text-green-400' : report.classification_confidence > 0.5
-                                        ? 'text-yellow-400' : 'text-red-400'
-                                    }`}>
-                                    {(report.classification_confidence * 100).toFixed(1)}%
-                                </span>
-                            </div>
-                            <div className="w-full h-1.5 rounded-full bg-gray-700/60 overflow-hidden">
-                                <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{
-                                        width: `${report.classification_confidence * 100}%`,
-                                        backgroundColor: report.classification_confidence > 0.8
-                                            ? '#22c55e' : report.classification_confidence > 0.5
-                                                ? '#eab308' : '#ef4444',
-                                    }}
-                                />
-                            </div>
-                        </>
+                    {isProcessing && (
+                        <div className="mt-3 space-y-2">
+                            <PipelineStep label="Video Download" status="complete" />
+                            <PipelineStep label="VideoMAE Crime Classification" status="active" />
+                            <PipelineStep label="Gemini Multimodal Analysis" status="pending" />
+                            <PipelineStep label="Validation Decision" status="pending" />
+                        </div>
                     )}
-                </div>
-
-                {/* Gemini */}
-                <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
-                    <div className="text-[10px] font-mono text-gray-500 uppercase mb-1.5">Gemini AI</div>
-                    {report.gemini_analysis ? (
-                        <p className="text-xs text-gray-300 leading-relaxed line-clamp-5">{report.gemini_analysis}</p>
-                    ) : (
-                        <p className="text-xs text-gray-600 italic">Awaiting analysis…</p>
-                    )}
-                </div>
-            </div>
-
-            {report.gemini_justification && (
-                <div className="rounded-lg bg-white/[0.02] border-l-2 border-[#a855f7]/30 p-3">
-                    <div className="text-[10px] font-mono text-gray-500 uppercase mb-1">AI Justification</div>
-                    <p className="text-xs text-gray-400 leading-relaxed italic">{report.gemini_justification}</p>
                 </div>
             )}
+
+            {/* AI Analysis Section — shown when results exist */}
+            {hasAIResults && (
+                <>
+                    <div className="flex items-center gap-2 pt-1">
+                        <Brain className="w-3.5 h-3.5 text-[#a855f7]" />
+                        <span className="text-[10px] font-mono text-[#a855f7] uppercase tracking-widest">AI Analysis</span>
+                        {severityFromJustification && (
+                            <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono uppercase border ${severityStyles[severityFromJustification]?.bg} ${severityStyles[severityFromJustification]?.border} ${severityStyles[severityFromJustification]?.color}`}>
+                                <ShieldAlert className="w-3 h-3" />
+                                {severityFromJustification}
+                            </span>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        {/* VideoMAE Classification Card */}
+                        <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <TrendingUp className="w-3 h-3 text-[#a855f7]/60" />
+                                <div className="text-[10px] font-mono text-gray-500 uppercase">VideoMAE Classification</div>
+                            </div>
+                            <div className="text-sm font-bold capitalize text-white mb-2">
+                                {report.classified_crime_type?.replace('_', ' ').replace('Normal Videos', 'Normal / No Crime') || 'Pending…'}
+                            </div>
+                            {report.classification_confidence != null && (
+                                <>
+                                    <div className="flex justify-between text-[10px] mb-1">
+                                        <span className="text-gray-500">Confidence</span>
+                                        <span className={`font-bold ${report.classification_confidence > 0.8
+                                            ? 'text-green-400' : report.classification_confidence > 0.5
+                                                ? 'text-yellow-400' : 'text-red-400'
+                                            }`}>
+                                            {(report.classification_confidence * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div className="w-full h-1.5 rounded-full bg-gray-700/60 overflow-hidden">
+                                        <motion.div
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${report.classification_confidence * 100}%` }}
+                                            transition={{ duration: 1, ease: 'easeOut' }}
+                                            className="h-full rounded-full"
+                                            style={{
+                                                backgroundColor: report.classification_confidence > 0.8
+                                                    ? '#22c55e' : report.classification_confidence > 0.5
+                                                        ? '#eab308' : '#ef4444',
+                                            }}
+                                        />
+                                    </div>
+                                    {/* Model match indicator */}
+                                    {report.classified_crime_type && (
+                                        <div className="mt-2 flex items-center gap-1.5">
+                                            {report.classified_crime_type.toLowerCase().replace(/\s+/g, '_') ===
+                                                report.crime_type.replace('_', '_') ? (
+                                                <div className="flex items-center gap-1 text-[10px] text-green-400">
+                                                    <CheckCircle className="w-3 h-3" />
+                                                    <span>Matches reported type</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 text-[10px] text-yellow-400">
+                                                    <AlertTriangle className="w-3 h-3" />
+                                                    <span>Differs from reported type</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Gemini Analysis Card */}
+                        <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <Brain className="w-3 h-3 text-[#a855f7]/60" />
+                                <div className="text-[10px] font-mono text-gray-500 uppercase">Gemini AI Analysis</div>
+                            </div>
+                            {report.gemini_analysis ? (
+                                <p className="text-xs text-gray-300 leading-relaxed">{report.gemini_analysis}</p>
+                            ) : (
+                                <p className="text-xs text-gray-600 italic">Awaiting analysis…</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Gemini Justification — full width */}
+                    {report.gemini_justification && (
+                        <div className="rounded-lg bg-white/[0.02] border-l-2 border-[#a855f7]/30 p-3">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                                <Shield className="w-3 h-3 text-[#a855f7]/60" />
+                                <div className="text-[10px] font-mono text-gray-500 uppercase">AI Justification</div>
+                            </div>
+                            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-line">{report.gemini_justification}</p>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+/** Pipeline step indicator shown during processing state */
+function PipelineStep({ label, status }: { label: string; status: 'complete' | 'active' | 'pending' }) {
+    return (
+        <div className="flex items-center gap-2.5">
+            {status === 'complete' && (
+                <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+            )}
+            {status === 'active' && (
+                <Loader2 className="w-3.5 h-3.5 text-[#a855f7] animate-spin flex-shrink-0" />
+            )}
+            {status === 'pending' && (
+                <div className="w-3.5 h-3.5 rounded-full border border-gray-600 flex-shrink-0" />
+            )}
+            <span className={`text-xs font-mono ${status === 'complete' ? 'text-green-400' : status === 'active' ? 'text-[#a855f7]' : 'text-gray-600'}`}>
+                {label}
+            </span>
         </div>
     );
 }
@@ -475,9 +586,10 @@ function ReportPanel({ report }: { report: UserReportedCrime }) {
 export default function EvidenceModal() {
     const {
         selectedAlert, selectedAlertType, isModalOpen, isCCTVStreamOpen,
-        closeModal, openCCTVStream, closeCCTVStream,
+        closeModal, openCCTVStream, closeCCTVStream, fetchUserReportedCrimes,
     } = useAlertStore();
     const videoRef = useRef<HTMLVideoElement>(null);
+    const [isRevalidating, setIsRevalidating] = useState(false);
 
     // Keyboard escape
     useEffect(() => {
@@ -684,9 +796,34 @@ export default function EvidenceModal() {
                                     ) : isReport ? (
                                         /* Purple: review actions (no CCTV button – not a camera) */
                                         <>
-                                            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm bg-[#a855f7]/15 border border-[#a855f7]/40 text-[#a855f7] hover:bg-[#a855f7]/25 transition-colors">
+                                            <button
+                                                onClick={async () => {
+                                                    const r = selectedAlert as UserReportedCrime;
+                                                    setIsRevalidating(true);
+                                                    try {
+                                                        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+                                                        await fetch(`${backendUrl}/reports/crime/${r.id}/revalidate`, { method: 'POST' });
+                                                        // Refresh reports after a brief delay for the status update
+                                                        setTimeout(() => fetchUserReportedCrimes(), 1500);
+                                                    } catch (e) {
+                                                        console.error('Re-validate failed:', e);
+                                                    } finally {
+                                                        setIsRevalidating(false);
+                                                    }
+                                                }}
+                                                disabled={isRevalidating}
+                                                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm bg-[#a855f7]/15 border border-[#a855f7]/40 text-[#a855f7] hover:bg-[#a855f7]/25 transition-colors disabled:opacity-50"
+                                            >
+                                                {isRevalidating ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <RefreshCw className="w-4 h-4" />
+                                                )}
+                                                {isRevalidating ? 'Re-validating…' : 'Re-validate AI'}
+                                            </button>
+                                            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-colors">
                                                 <CheckCircle className="w-4 h-4" />
-                                                Review Report
+                                                Approve Report
                                             </button>
                                             <button className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-mono text-sm bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
                                                 Reject

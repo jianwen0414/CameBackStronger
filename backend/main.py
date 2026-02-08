@@ -2,11 +2,12 @@
 NightWalk Backend - FastAPI Application
 Urban Safety Ecosystem API for IoT cameras, mobile AR, and web dashboard.
 """
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated
+import logging
 
 from config import get_settings, Settings
 from schemas import (
@@ -41,6 +42,13 @@ from database import (
     get_all_reported_crimes,
     find_nearby_reported_crimes,
     update_crime_report_validation,
+)
+from validation_pipeline import process_crime_report
+
+# Configure logging for the AI pipeline
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 
 
@@ -185,7 +193,8 @@ async def get_nearby_hazards(
                 bearing_degrees=h["bearing"],
                 is_immediate=h["is_immediate"],
                 detected_at=h["detected_at"],
-                evidence_url=h.get("evidence_url")
+                evidence_url=h.get("evidence_url"),
+                beacon_kind=h.get("beacon_kind", "immediate" if h["is_immediate"] else "suspicious"),
             )
             for h in hazards
         ]
@@ -328,12 +337,16 @@ async def get_nearby_cctv(
 # ============================================================================
 
 @app.post("/reports/crime", response_model=ReportCreatedResponse, tags=["Reports"])
-async def submit_crime_report(report: UserReportCrimeRequest):
+async def submit_crime_report(
+    report: UserReportCrimeRequest,
+    background_tasks: BackgroundTasks,
+):
     """
     Submit a user-reported crime from the mobile app.
     
-    The report will be created with 'pending' status and later processed
-    by the video classification model + Gemini AI analysis.
+    The report will be created with 'pending' status and immediately
+    queued for async validation via the VideoMAE + Gemini AI pipeline.
+    The citizen receives an instant response while processing runs in background.
     """
     try:
         result = await insert_user_reported_crime(
@@ -346,10 +359,25 @@ async def submit_crime_report(report: UserReportCrimeRequest):
             video_duration_seconds=report.video_duration_seconds,
         )
         
+        report_id = str(result.get("id", "unknown"))
+        
+        # Trigger the async AI validation pipeline (VideoMAE + Gemini)
+        background_tasks.add_task(
+            process_crime_report,
+            report_id=report_id,
+            evidence_video_url=report.evidence_video_url,
+            user_reported_type=report.crime_type.value,
+            description=report.description,
+        )
+        
         return ReportCreatedResponse(
             success=True,
-            report_id=str(result.get("id", "unknown")),
-            message=f"Crime report submitted. Type: {report.crime_type.value}. Awaiting validation.",
+            report_id=report_id,
+            message=(
+                f"Crime report submitted. Type: {report.crime_type.value}. "
+                f"AI validation pipeline started — video classification and "
+                f"Gemini analysis running in background."
+            ),
             validation_status="pending"
         )
     except Exception as e:
@@ -432,6 +460,43 @@ async def validate_crime_report(
         return {"success": True, "report_id": report_id, "validation_status": validation_status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to validate report: {str(e)}")
+
+
+@app.post("/reports/crime/{report_id}/revalidate", tags=["Reports"])
+async def revalidate_crime_report(
+    report_id: str,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Re-run the AI validation pipeline on an existing crime report.
+    Useful for admin re-assessment or after pipeline errors.
+    """
+    try:
+        # Fetch the report to get its details
+        reports = await get_all_reported_crimes(include_all=True, limit=500)
+        report = next((r for r in reports if str(r.get("id")) == report_id), None)
+        
+        if not report:
+            raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
+        
+        # Queue re-validation
+        background_tasks.add_task(
+            process_crime_report,
+            report_id=report_id,
+            evidence_video_url=report.get("evidence_video_url", ""),
+            user_reported_type=report.get("crime_type", "unknown"),
+            description=report.get("description"),
+        )
+        
+        return {
+            "success": True,
+            "report_id": report_id,
+            "message": "Re-validation pipeline started in background.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to re-validate: {str(e)}")
 
 
 # ============================================================================

@@ -134,6 +134,7 @@ class HazardResponse(BaseModel):
     is_immediate: bool = Field(..., description="True for immediate danger, False for suspicious")
     detected_at: datetime
     evidence_url: Optional[str] = None
+    beacon_kind: str = Field("immediate", description="Beacon colour kind: immediate (red), suspicious (yellow), report (purple)")
 
 
 class NearbyHazardsResponse(BaseModel):

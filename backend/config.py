@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     # Google Cloud Storage
     gcs_bucket_name: str = "nightwalk-evidence"
     
+    # Gemini AI
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    
+    # VideoMAE Crime Classification
+    videomae_model_name: str = "OPear/videomae-large-finetuned-UCF-Crime"
+    classification_confidence_threshold: float = 0.3
+    
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000

@@ -1,173 +1,181 @@
 /**
  * NightWalk Mobile - Alert Store (Zustand)
- * Now includes validated user-reported crimes as purple beacons
+ *
+ * ALL beacons (red, yellow, purple) are fetched globally and rendered on the
+ * map so the user sees a proper heatmap of the entire city.
+ *
+ * The 1 km radius is used ONLY for:
+ *   • Safety score percentage displayed at the top of the Map tab
+ *   • "N hazards nearby" counter displayed at the top of the Map tab
+ *
+ * Purple beacons: only those with validation_status === 'validated' are shown.
  */
 import { create } from 'zustand';
-import Config from 'react-native-config';
 import { supabase, HazardData, parsePostGISPoint } from '../lib/supabase';
 import type { BeaconKind } from '../lib/supabase';
 
-const API_BASE_URL = (Config.API_BASE_URL || '').replace(/\/+$/, '');
+// ── Haversine helper (metres) ────────────────────────────────────────────────
+function haversineMetres(
+    lat1: number, lon1: number,
+    lat2: number, lon2: number,
+): number {
+    const R = 6_371_000; // Earth radius in metres
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ── Radius for "nearby" safety score & count ─────────────────────────────────
+const NEARBY_RADIUS_M = 1_000; // 1 km
 
 interface AlertState {
-    nearbyHazards: HazardData[];
+    /** Every beacon globally (red + yellow + validated purple). */
+    allHazards: HazardData[];
+    /** Subset of allHazards within NEARBY_RADIUS_M of the user's position. */
+    nearbyCount: number;
+    /** Safety score (0-100) computed from hazards within NEARBY_RADIUS_M. */
+    zoneSafety: number;
     isLoading: boolean;
     error: string | null;
-    zoneSafety: number;
+    /** Lat/long used for the most recent safety score calculation. */
+    userLat: number;
+    userLong: number;
+
+    // Keep the old name so MapScreen's destructuring still works
+    nearbyHazards: HazardData[];
 
     // Actions
+    fetchAllHazards: () => Promise<void>;
+    /** @deprecated — alias kept for backward-compat; calls fetchAllHazards */
     fetchNearbyHazards: (lat: number, long: number, radius?: number) => Promise<void>;
     subscribeToAlerts: () => () => void;
+    setUserLocation: (lat: number, long: number) => void;
     calculateZoneSafety: () => void;
 }
 
 export const useAlertStore = create<AlertState>((set, get) => ({
+    allHazards: [],
     nearbyHazards: [],
+    nearbyCount: 0,
+    zoneSafety: 100,
     isLoading: false,
     error: null,
-    zoneSafety: 100,
+    userLat: 0,
+    userLong: 0,
 
-    fetchNearbyHazards: async (lat: number, long: number, radius = 500) => {
+    // ══════════════════════════════════════════════════════════════════════════
+    // Fetch ALL beacons globally (no radius filtering)
+    // ══════════════════════════════════════════════════════════════════════════
+    fetchAllHazards: async () => {
         set({ isLoading: true, error: null });
 
         try {
-            // Try API first if available
-            if (API_BASE_URL) {
-                try {
-                    const response = await fetch(
-                        `${API_BASE_URL}/alerts/nearby?lat=${lat}&long=${long}&radius=${radius}`,
-                    );
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        const hazards: HazardData[] = (data.hazards || []).map((h: any) => ({
-                            ...h,
-                            coordinates: h.coordinates?.lat && h.coordinates?.long
-                                ? { lat: h.coordinates.lat, long: h.coordinates.long }
-                                : { lat: h.lat || 0, long: h.long || 0 },
-                            beacon_kind: h.beacon_kind || (h.is_immediate ? 'immediate' : 'suspicious') as BeaconKind,
-                        })).filter((h: HazardData) => h.coordinates.lat && h.coordinates.long);
-
-                        console.log('Fetched hazards from API:', hazards.length);
-                        set({ nearbyHazards: hazards, isLoading: false });
-                        get().calculateZoneSafety();
-                        return;
-                    }
-                } catch (apiError) {
-                    console.warn('API fetch failed, falling back to Supabase:', apiError);
-                }
-            }
-
-            // Fallback: Fetch directly from Supabase using RPC functions
-            console.log('Fetching hazards from Supabase...');
-            
-            // Fetch immediate dangers
-            const { data: immediateDangers, error: dangerError } = await supabase.rpc(
-                'find_immediate_dangers_nearby',
-                {
-                    query_lat: lat,
-                    query_long: long,
-                    radius_m: radius,
-                }
-            );
-
-            // Fetch suspicious logs
-            const { data: suspiciousLogs, error: suspiciousError } = await supabase.rpc(
-                'find_suspicious_nearby',
-                {
-                    query_lat: lat,
-                    query_long: long,
-                    radius_m: radius,
-                }
-            );
-
-            // Fetch validated user-reported crimes (purple beacons)
-            const { data: reportedCrimes, error: reportError } = await supabase.rpc(
-                'find_nearby_reported_crimes',
-                {
-                    query_lat: lat,
-                    query_long: long,
-                    radius_m: radius,
-                }
-            );
-
-            if (dangerError) console.error('Error fetching immediate dangers:', dangerError);
-            if (suspiciousError) console.error('Error fetching suspicious logs:', suspiciousError);
-            if (reportError) console.error('Error fetching reported crimes:', reportError);
-
-            // Combine and format hazards
             const hazards: HazardData[] = [];
 
-            // Process immediate dangers
-            if (immediateDangers && Array.isArray(immediateDangers)) {
-                immediateDangers.forEach((d: any) => {
-                    const lat = typeof d.lat === 'number' ? d.lat : parseFloat(d.lat);
-                    const long = typeof d.long === 'number' ? d.long : parseFloat(d.long);
-                    
-                    if (!isNaN(lat) && !isNaN(long) && lat !== 0 && long !== 0) {
+            // ─── 1. Red beacons: immediate_danger_logs ───────────────
+            try {
+                const { data: dangers, error: dErr } = await supabase
+                    .from('immediate_danger_logs')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('detected_at', { ascending: false })
+                    .limit(500);
+
+                if (dErr) console.error('Error fetching immediate dangers:', dErr);
+
+                (dangers || []).forEach((d: any) => {
+                    const coords = parsePostGISPoint(d.coordinates);
+                    if (coords && coords.lat !== 0 && coords.long !== 0) {
                         hazards.push({
                             id: d.id,
-                            coordinates: { lat, long },
+                            coordinates: coords,
                             type: d.activity_type || 'danger',
                             distance_meters: 0,
                             bearing_degrees: 0,
                             is_immediate: true,
                             detected_at: d.detected_at,
-                            beacon_kind: 'immediate',
+                            beacon_kind: 'immediate' as BeaconKind,
                         });
                     }
                 });
+            } catch (e) {
+                console.error('Exception fetching immediate dangers:', e);
             }
 
-            // Process suspicious logs
-            if (suspiciousLogs && Array.isArray(suspiciousLogs)) {
-                suspiciousLogs.forEach((s: any) => {
-                    const lat = typeof s.lat === 'number' ? s.lat : parseFloat(s.lat);
-                    const long = typeof s.long === 'number' ? s.long : parseFloat(s.long);
-                    
-                    if (!isNaN(lat) && !isNaN(long) && lat !== 0 && long !== 0) {
+            // ─── 2. Yellow beacons: suspicious_individual_logs ───────
+            try {
+                const { data: suspicious, error: sErr } = await supabase
+                    .from('suspicious_individual_logs')
+                    .select('*')
+                    .order('detected_at', { ascending: false })
+                    .limit(500);
+
+                if (sErr) console.error('Error fetching suspicious logs:', sErr);
+
+                (suspicious || []).forEach((s: any) => {
+                    const coords = parsePostGISPoint(s.coordinates);
+                    if (coords && coords.lat !== 0 && coords.long !== 0) {
                         hazards.push({
                             id: s.id,
-                            coordinates: { lat, long },
+                            coordinates: coords,
                             type: 'suspicious',
                             distance_meters: 0,
                             bearing_degrees: 0,
                             is_immediate: false,
                             detected_at: s.detected_at,
-                            beacon_kind: 'suspicious',
+                            beacon_kind: 'suspicious' as BeaconKind,
                         });
                     }
                 });
+            } catch (e) {
+                console.error('Exception fetching suspicious logs:', e);
             }
 
-            // Process validated user-reported crimes (purple beacons — only validated ones show on mobile)
-            if (reportedCrimes && Array.isArray(reportedCrimes)) {
-                reportedCrimes
-                    .filter((r: any) => r.validation_status === 'validated')
-                    .forEach((r: any) => {
-                        const lat = typeof r.lat === 'number' ? r.lat : parseFloat(r.lat);
-                        const long = typeof r.long === 'number' ? r.long : parseFloat(r.long);
+            // ─── 3. Purple beacons: validated user-reported crimes ───
+            try {
+                const { data: reports, error: rErr } = await supabase
+                    .from('user_reported_crimes')
+                    .select('*')
+                    .eq('validation_status', 'validated')
+                    .order('reported_at', { ascending: false })
+                    .limit(500);
 
-                        if (!isNaN(lat) && !isNaN(long) && lat !== 0 && long !== 0) {
-                            hazards.push({
-                                id: r.id,
-                                coordinates: { lat, long },
-                                type: r.crime_type || 'report',
-                                distance_meters: typeof r.distance_meters === 'number' ? r.distance_meters : 0,
-                                bearing_degrees: 0,
-                                is_immediate: false,
-                                detected_at: r.reported_at,
-                                beacon_kind: 'report',
-                            });
-                        }
-                    });
+                if (rErr) console.error('Error fetching validated crimes:', rErr);
+
+                (reports || []).forEach((r: any) => {
+                    const coords = parsePostGISPoint(r.coordinates);
+                    if (coords && coords.lat !== 0 && coords.long !== 0) {
+                        hazards.push({
+                            id: r.id,
+                            coordinates: coords,
+                            type: r.crime_type || 'report',
+                            distance_meters: 0,
+                            bearing_degrees: 0,
+                            is_immediate: false,
+                            detected_at: r.reported_at,
+                            beacon_kind: 'report' as BeaconKind,
+                        });
+                    }
+                });
+            } catch (e) {
+                console.error('Exception fetching validated crimes:', e);
             }
 
-            console.log('Fetched hazards from Supabase:', hazards.length);
-            set({ nearbyHazards: hazards, isLoading: false });
+            console.log(
+                `[NightWalk] Fetched ${hazards.length} global hazards ` +
+                `(${hazards.filter(h => h.beacon_kind === 'immediate').length} red, ` +
+                `${hazards.filter(h => h.beacon_kind === 'suspicious').length} yellow, ` +
+                `${hazards.filter(h => h.beacon_kind === 'report').length} purple)`,
+            );
+
+            set({ allHazards: hazards, nearbyHazards: hazards, isLoading: false });
             get().calculateZoneSafety();
         } catch (error) {
-            console.error('Failed to fetch hazards:', error);
+            console.error('Failed to fetch global hazards:', error);
             set({
                 error: error instanceof Error ? error.message : 'Failed to fetch hazards',
                 isLoading: false,
@@ -175,34 +183,46 @@ export const useAlertStore = create<AlertState>((set, get) => ({
         }
     },
 
+    // Backward-compat alias: store the user location, then do a global fetch
+    fetchNearbyHazards: async (lat: number, long: number, _radius?: number) => {
+        set({ userLat: lat, userLong: long });
+        await get().fetchAllHazards();
+    },
+
+    setUserLocation: (lat: number, long: number) => {
+        set({ userLat: lat, userLong: long });
+        get().calculateZoneSafety();
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Realtime subscriptions (global — no radius filter)
+    // ══════════════════════════════════════════════════════════════════════════
     subscribeToAlerts: () => {
         const channel = supabase
             .channel('mobile-alerts')
+            // ── Red beacons ──────────────────────────────────────────
             .on(
                 'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
+                { event: 'INSERT', schema: 'public', table: 'immediate_danger_logs' },
                 payload => {
-                    const newDanger = payload.new;
-                    if (newDanger.is_active) {
-                        const coords = parsePostGISPoint(newDanger.coordinates);
+                    const d = payload.new;
+                    if (d.is_active) {
+                        const coords = parsePostGISPoint(d.coordinates);
                         if (coords) {
                             const hazard: HazardData = {
-                                id: newDanger.id,
+                                id: d.id,
                                 coordinates: coords,
-                                type: newDanger.activity_type,
+                                type: d.activity_type,
                                 distance_meters: 0,
                                 bearing_degrees: 0,
                                 is_immediate: true,
-                                detected_at: newDanger.detected_at,
+                                detected_at: d.detected_at,
                                 beacon_kind: 'immediate',
                             };
-                            set(state => ({
-                                nearbyHazards: [hazard, ...state.nearbyHazards],
-                            }));
+                            set(state => {
+                                const updated = [hazard, ...state.allHazards];
+                                return { allHazards: updated, nearbyHazards: updated };
+                            });
                             get().calculateZoneSafety();
                         }
                     }
@@ -210,44 +230,28 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             )
             .on(
                 'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
+                { event: 'UPDATE', schema: 'public', table: 'immediate_danger_logs' },
                 payload => {
-                    const updatedDanger = payload.new;
-                    const coords = parsePostGISPoint(updatedDanger.coordinates);
-
+                    const d = payload.new;
+                    const coords = parsePostGISPoint(d.coordinates);
                     set(state => {
-                        if (!updatedDanger.is_active) {
-                            return {
-                                nearbyHazards: state.nearbyHazards.filter(h => h.id !== updatedDanger.id),
-                            };
+                        if (!d.is_active) {
+                            const filtered = state.allHazards.filter(h => h.id !== d.id);
+                            return { allHazards: filtered, nearbyHazards: filtered };
                         }
                         if (coords) {
-                            const existingIndex = state.nearbyHazards.findIndex(h => h.id === updatedDanger.id);
-                            if (existingIndex >= 0) {
-                                const updated = [...state.nearbyHazards];
-                                updated[existingIndex] = {
-                                    ...updated[existingIndex],
-                                    coordinates: coords,
-                                    type: updatedDanger.activity_type,
-                                    detected_at: updatedDanger.detected_at,
-                                };
-                                return { nearbyHazards: updated };
+                            const idx = state.allHazards.findIndex(h => h.id === d.id);
+                            if (idx >= 0) {
+                                const updated = [...state.allHazards];
+                                updated[idx] = { ...updated[idx], coordinates: coords, type: d.activity_type, detected_at: d.detected_at };
+                                return { allHazards: updated, nearbyHazards: updated };
                             }
-                            const hazard: HazardData = {
-                                id: updatedDanger.id,
-                                coordinates: coords,
-                                type: updatedDanger.activity_type,
-                                distance_meters: 0,
-                                bearing_degrees: 0,
-                                is_immediate: true,
-                                detected_at: updatedDanger.detected_at,
-                                beacon_kind: 'immediate',
-                            };
-                            return { nearbyHazards: [hazard, ...state.nearbyHazards] };
+                            const newList = [{
+                                id: d.id, coordinates: coords, type: d.activity_type,
+                                distance_meters: 0, bearing_degrees: 0, is_immediate: true,
+                                detected_at: d.detected_at, beacon_kind: 'immediate' as BeaconKind,
+                            }, ...state.allHazards];
+                            return { allHazards: newList, nearbyHazards: newList };
                         }
                         return state;
                     });
@@ -256,37 +260,51 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             )
             .on(
                 'postgres_changes',
-                {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
+                { event: 'DELETE', schema: 'public', table: 'immediate_danger_logs' },
                 payload => {
-                    const deletedId = payload.old.id;
-                    set(state => ({
-                        nearbyHazards: state.nearbyHazards.filter(h => h.id !== deletedId),
-                    }));
+                    set(state => {
+                        const filtered = state.allHazards.filter(h => h.id !== payload.old.id);
+                        return { allHazards: filtered, nearbyHazards: filtered };
+                    });
                     get().calculateZoneSafety();
                 },
             )
-            // Subscribe to validated user-reported crimes
+            // ── Purple beacons (validated user-reported crimes) ──────
             .on(
                 'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'user_reported_crimes',
-                    filter: 'validation_status=eq.validated',
-                },
+                { event: '*', schema: 'public', table: 'user_reported_crimes' },
                 payload => {
                     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                         const report = payload.new;
-                        if (report.validation_status === 'validated' && report.lat && report.long) {
+
+                        if (report.validation_status !== 'validated') {
+                            // Remove if it was previously in the list
                             set(state => {
-                                const existing = state.nearbyHazards.findIndex(h => h.id === report.id);
-                                const newHazard: HazardData = {
+                                const filtered = state.allHazards.filter(h => h.id !== report.id);
+                                return { allHazards: filtered, nearbyHazards: filtered };
+                            });
+                            get().calculateZoneSafety();
+                            return;
+                        }
+
+                        // Parse PostGIS WKT coordinates
+                        let lat: number | undefined;
+                        let long: number | undefined;
+
+                        if (typeof report.lat === 'number' && typeof report.long === 'number') {
+                            lat = report.lat;
+                            long = report.long;
+                        } else {
+                            const parsed = parsePostGISPoint(report.coordinates);
+                            if (parsed) { lat = parsed.lat; long = parsed.long; }
+                        }
+
+                        if (lat && long && !isNaN(lat) && !isNaN(long)) {
+                            set(state => {
+                                const idx = state.allHazards.findIndex(h => h.id === report.id);
+                                const newH: HazardData = {
                                     id: report.id,
-                                    coordinates: { lat: report.lat, long: report.long },
+                                    coordinates: { lat, long },
                                     type: report.crime_type || 'report',
                                     distance_meters: 0,
                                     bearing_degrees: 0,
@@ -294,50 +312,60 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                                     detected_at: report.reported_at,
                                     beacon_kind: 'report',
                                 };
-                                if (existing >= 0) {
-                                    const updated = [...state.nearbyHazards];
-                                    updated[existing] = newHazard;
-                                    return { nearbyHazards: updated };
+                                if (idx >= 0) {
+                                    const updated = [...state.allHazards];
+                                    updated[idx] = newH;
+                                    return { allHazards: updated, nearbyHazards: updated };
                                 }
-                                return { nearbyHazards: [newHazard, ...state.nearbyHazards] };
+                                const newList = [newH, ...state.allHazards];
+                                return { allHazards: newList, nearbyHazards: newList };
                             });
                             get().calculateZoneSafety();
+                        } else {
+                            console.warn('[NightWalk] Validated report missing coordinates:', report.id);
                         }
                     }
                     if (payload.eventType === 'DELETE') {
-                        set(state => ({
-                            nearbyHazards: state.nearbyHazards.filter(h => h.id !== payload.old.id),
-                        }));
+                        set(state => {
+                            const filtered = state.allHazards.filter(h => h.id !== payload.old.id);
+                            return { allHazards: filtered, nearbyHazards: filtered };
+                        });
                         get().calculateZoneSafety();
                     }
                 },
             )
             .subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     },
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // Safety score — computed from hazards within 1 km of user position
+    // ══════════════════════════════════════════════════════════════════════════
     calculateZoneSafety: () => {
-        const { nearbyHazards } = get();
+        const { allHazards, userLat, userLong } = get();
 
-        if (nearbyHazards.length === 0) {
-            set({ zoneSafety: 100 });
+        if (allHazards.length === 0 || (userLat === 0 && userLong === 0)) {
+            set({ zoneSafety: 100, nearbyCount: 0 });
             return;
         }
 
         let safetyScore = 100;
+        let nearby = 0;
 
-        nearbyHazards.forEach(hazard => {
-            const distance = hazard.distance_meters || 0;
-            const distanceFactor = Math.max(0, 1 - distance / 500);
-            
-            // Immediate dangers most severe, reports moderate, suspicious low
+        allHazards.forEach(hazard => {
+            const dist = haversineMetres(
+                userLat, userLong,
+                hazard.coordinates.lat, hazard.coordinates.long,
+            );
+            if (dist > NEARBY_RADIUS_M) return; // outside 1 km — skip for safety calc
+
+            nearby++;
+            const distanceFactor = Math.max(0, 1 - dist / NEARBY_RADIUS_M);
             const severity = hazard.is_immediate ? 35 : hazard.beacon_kind === 'report' ? 20 : 15;
             safetyScore -= severity * distanceFactor;
         });
 
-        set({ zoneSafety: Math.max(0, Math.round(safetyScore)) });
+        set({ zoneSafety: Math.max(0, Math.round(safetyScore)), nearbyCount: nearby });
     },
 }));

@@ -47,3 +47,6 @@ alter table immediate_danger_logs enable row level security;
 -- Policy: Everyone can READ (for the AR app), but only IoT/Admins can INSERT
 create policy "Public Read Access" on suspicious_individual_logs for select using (true);
 create policy "IoT Insert Access" on suspicious_individual_logs for insert with check (auth.role() = 'service_role');
+
+create policy "Public Read Access" on immediate_danger_logs for select using (true);
+create policy "IoT Insert Access" on immediate_danger_logs for insert with check (auth.role() = 'service_role');

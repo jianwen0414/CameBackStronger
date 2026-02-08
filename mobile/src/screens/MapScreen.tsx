@@ -346,7 +346,7 @@ export default function MapScreen() {
     const [isRouting, setIsRouting] = useState(false);
     const [routeError, setRouteError] = useState<string | null>(null);
 
-    const { nearbyHazards, fetchNearbyHazards, zoneSafety, subscribeToAlerts } = useAlertStore();
+    const { nearbyHazards, fetchNearbyHazards, zoneSafety, nearbyCount, subscribeToAlerts, setUserLocation } = useAlertStore();
     const mapsApiKey = Config.GOOGLE_MAPS_API_KEY || '';
 
     const requestLocationPermission = async () => {
@@ -362,7 +362,7 @@ export default function MapScreen() {
         if (!hasPermission) {
             // If permission denied, use default coordinates
             setCurrentLocation(DEFAULT_COORDS);
-            fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+            fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude);
             setOriginLabel('Default Location');
             setOriginCoords(DEFAULT_COORDS);
             setOriginPlaceId(null);
@@ -374,7 +374,8 @@ export default function MapScreen() {
             position => {
                 const { latitude, longitude } = position.coords;
                 setCurrentLocation({ latitude, longitude });
-                fetchNearbyHazards(latitude, longitude, 1000);
+                setUserLocation(latitude, longitude);
+                fetchNearbyHazards(latitude, longitude);
                 setOriginLabel('Current Location');
                 setOriginCoords({ latitude, longitude });
                 setOriginPlaceId(null);
@@ -391,7 +392,7 @@ export default function MapScreen() {
                 console.error('Location error:', error);
                 // On GPS error, use default coordinates
                 setCurrentLocation(DEFAULT_COORDS);
-                fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+                fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude);
                 setOriginLabel('Default Location');
                 setOriginCoords(DEFAULT_COORDS);
                 setOriginPlaceId(null);
@@ -412,7 +413,7 @@ export default function MapScreen() {
             longitudeDelta: 0.002,
         });
         
-        fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude, 1000);
+        fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude);
         const unsubscribe = subscribeToAlerts();
         return () => unsubscribe();
     }, []);
@@ -940,7 +941,7 @@ export default function MapScreen() {
                 </View>
                 <View style={styles.hazardCount}>
                     <Text style={styles.hazardCountText}>
-                        {nearbyHazards.length} {nearbyHazards.length === 1 ? 'hazard' : 'hazards'} nearby
+                        {nearbyCount} {nearbyCount === 1 ? 'hazard' : 'hazards'} nearby
                     </Text>
                 </View>
             </View>
@@ -1217,8 +1218,9 @@ export default function MapScreen() {
                         longitudeDelta: 0.002,
                     });
                     
-                    // Refresh hazards for the centered location (radius reduced for street view)
-                    fetchNearbyHazards(centerCoords.latitude, centerCoords.longitude, 500);
+                    // Refresh hazards globally and update user location for safety score
+                    setUserLocation(centerCoords.latitude, centerCoords.longitude);
+                    fetchNearbyHazards(centerCoords.latitude, centerCoords.longitude);
                 }}
             >
                 <MapPin size={20} color="#00f5ff" />
