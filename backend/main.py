@@ -2,7 +2,7 @@
 NightWalk Backend - FastAPI Application
 Urban Safety Ecosystem API for IoT cameras, mobile AR, and web dashboard.
 """
-from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -42,6 +42,7 @@ from database import (
     get_all_reported_crimes,
     find_nearby_reported_crimes,
     update_crime_report_validation,
+    get_supabase_client,
 )
 from validation_pipeline import process_crime_report
 
@@ -335,6 +336,46 @@ async def get_nearby_cctv(
 # ============================================================================
 # User Crime Report Endpoints
 # ============================================================================
+
+@app.post("/reports/upload", tags=["Reports"])
+async def upload_evidence_video(
+    file: UploadFile = File(...)
+):
+    """
+    Upload an evidence video file directly to the backend.
+    
+    The backend uses the service key to bypass Row Level Security 
+    and uploads the video to Supabase Storage, returning the public URL.
+    """
+    try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+            
+        file_ext = file.filename.split(".")[-1] if "." in file.filename else "mp4"
+        import uuid
+        import time
+        safe_filename = f"{int(time.time())}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        
+        # Read file contents
+        file_bytes = await file.read()
+        
+        client = get_supabase_client()
+        
+        # Upload to supabase storage using service key
+        res = client.storage.from_("evidence-videos").upload(
+            file=file_bytes,
+            path=safe_filename,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # Get public URL
+        public_url = client.storage.from_("evidence-videos").get_public_url(safe_filename)
+        
+        return {"success": True, "evidence_video_url": public_url}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload video: {str(e)}")
+
 
 @app.post("/reports/crime", response_model=ReportCreatedResponse, tags=["Reports"])
 async def submit_crime_report(

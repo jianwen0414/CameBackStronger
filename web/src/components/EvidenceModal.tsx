@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     X, AlertTriangle, Clock, MapPin, Play, Camera, Video,
     Users, Brain, CheckCircle, Shield, ChevronRight, Radio,
-    Eye, Hash, Crosshair, FileText, Activity, Zap,
+    Hash, Crosshair, Activity,
     RefreshCw, Loader2, ShieldAlert, TrendingUp,
 } from 'lucide-react';
 import { useAlertStore } from '../store/useAlertStore';
@@ -44,49 +44,49 @@ const BEACON_STYLES: Record<BeaconType, {
     accentRgb: string;
 }> = {
     red: {
-        border: 'border-[#ff0040]',
-        shadow: 'shadow-[0_0_60px_rgba(255,0,64,0.3)]',
-        headerBg: 'bg-gradient-to-r from-[rgba(255,0,64,0.15)] to-transparent',
-        headerBorder: 'border-b border-[#ff0040]/40',
-        iconBg: 'bg-[rgba(255,0,64,0.15)]',
-        iconColor: 'text-[#ff0040]',
-        titleColor: 'text-[#ff0040]',
+        border: 'border-white/10',
+        shadow: 'shadow-2xl shadow-black/50',
+        headerBg: 'bg-transparent',
+        headerBorder: 'border-b border-white/5',
+        iconBg: 'bg-red-500/10',
+        iconColor: 'text-red-500',
+        titleColor: 'text-white',
         title: 'Immediate Danger',
-        accent: '#ff0040',
-        accentRgb: '255,0,64',
+        accent: '#ef4444',
+        accentRgb: '239,68,68',
     },
     yellow: {
-        border: 'border-[#ffcc00]',
-        shadow: 'shadow-[0_0_60px_rgba(255,204,0,0.2)]',
-        headerBg: 'bg-gradient-to-r from-[rgba(255,204,0,0.1)] to-transparent',
-        headerBorder: 'border-b border-[#ffcc00]/40',
-        iconBg: 'bg-[rgba(255,204,0,0.15)]',
-        iconColor: 'text-[#ffcc00]',
-        titleColor: 'text-[#ffcc00]',
+        border: 'border-white/10',
+        shadow: 'shadow-2xl shadow-black/50',
+        headerBg: 'bg-transparent',
+        headerBorder: 'border-b border-white/5',
+        iconBg: 'bg-yellow-500/10',
+        iconColor: 'text-yellow-500',
+        titleColor: 'text-white',
         title: 'Suspicious Activity',
-        accent: '#ffcc00',
-        accentRgb: '255,204,0',
+        accent: '#eab308',
+        accentRgb: '234,179,8',
     },
     blue: {
-        border: 'border-[#00aaff]',
-        shadow: 'shadow-[0_0_60px_rgba(0,170,255,0.25)]',
-        headerBg: 'bg-gradient-to-r from-[rgba(0,170,255,0.12)] to-transparent',
-        headerBorder: 'border-b border-[#00aaff]/40',
-        iconBg: 'bg-[rgba(0,170,255,0.15)]',
-        iconColor: 'text-[#00aaff]',
-        titleColor: 'text-[#00aaff]',
+        border: 'border-white/10',
+        shadow: 'shadow-2xl shadow-black/50',
+        headerBg: 'bg-transparent',
+        headerBorder: 'border-b border-white/5',
+        iconBg: 'bg-sky-500/10',
+        iconColor: 'text-sky-500',
+        titleColor: 'text-white',
         title: 'CCTV Camera',
-        accent: '#00aaff',
-        accentRgb: '0,170,255',
+        accent: '#38bdf8',
+        accentRgb: '56,189,248',
     },
     purple: {
-        border: 'border-[#a855f7]',
-        shadow: 'shadow-[0_0_60px_rgba(168,85,247,0.25)]',
-        headerBg: 'bg-gradient-to-r from-[rgba(168,85,247,0.12)] to-transparent',
-        headerBorder: 'border-b border-[#a855f7]/40',
-        iconBg: 'bg-[rgba(168,85,247,0.15)]',
-        iconColor: 'text-[#a855f7]',
-        titleColor: 'text-[#a855f7]',
+        border: 'border-white/10',
+        shadow: 'shadow-2xl shadow-black/50',
+        headerBg: 'bg-transparent',
+        headerBorder: 'border-b border-white/5',
+        iconBg: 'bg-purple-500/10',
+        iconColor: 'text-purple-500',
+        titleColor: 'text-white',
         title: 'User Reported Crime',
         accent: '#a855f7',
         accentRgb: '168,85,247',
@@ -153,14 +153,6 @@ function CCTVStreamView({ camera, sourceLabel, onClose }: {
             {/* Video */}
             <div className="flex-1 relative">
                 <video ref={videoRef} src={streamUrl} autoPlay loop muted className="w-full h-full object-contain" />
-                <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.15)_50%)] bg-[length:100%_4px]" />
-                <div className="absolute top-4 left-4 w-12 h-12 border-l-2 border-t-2 border-[#00aaff] opacity-40" />
-                <div className="absolute top-4 right-4 w-12 h-12 border-r-2 border-t-2 border-[#00aaff] opacity-40" />
-                <div className="absolute bottom-4 left-4 w-12 h-12 border-l-2 border-b-2 border-[#00aaff] opacity-40" />
-                <div className="absolute bottom-4 right-4 w-12 h-12 border-r-2 border-b-2 border-[#00aaff] opacity-40" />
-                <div className="absolute bottom-6 left-6 text-[11px] font-mono text-[#00aaff]/60">
-                    STREAM // {new Date().toISOString()}
-                </div>
             </div>
         </motion.div>
     );
@@ -173,18 +165,9 @@ function CCTVStreamView({ camera, sourceLabel, onClose }: {
 function SourceCameraBar({ camera, accentRgb }: { camera: CCTVCamera | null; accentRgb: string }) {
     if (!camera) return null;
     return (
-        <div
-            className="mx-4 mt-4 flex items-center gap-3 rounded-lg px-4 py-3 border"
-            style={{
-                background: `rgba(${accentRgb},0.04)`,
-                borderColor: `rgba(${accentRgb},0.18)`,
-            }}
-        >
-            <div
-                className="flex items-center justify-center w-9 h-9 rounded-lg"
-                style={{ background: `rgba(${accentRgb},0.1)` }}
-            >
-                <Camera className="w-4 h-4" style={{ color: `rgba(${accentRgb},0.8)` }} />
+        <div className="mx-4 mt-4 flex items-center gap-3 rounded-xl px-4 py-3 bg-white/[0.02] border border-white/5">
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full`} style={{ backgroundColor: `${accentRgb}15` }}>
+                <Camera className="w-4 h-4" style={{ color: accentRgb }} />
             </div>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -214,11 +197,9 @@ function SourceCameraBar({ camera, accentRgb }: { camera: CCTVCamera | null; acc
 
 function EvidenceVideoPlayer({
     url,
-    accent,
     videoRef,
 }: {
     url: string | null;
-    accent: string;
     videoRef: React.RefObject<HTMLVideoElement | null>;
 }) {
     if (!url) {
@@ -230,13 +211,8 @@ function EvidenceVideoPlayer({
     }
     const src = url.startsWith('gs://') ? url.replace('gs://', 'https://storage.googleapis.com/') : url;
     return (
-        <div className="mx-4 mt-3 relative aspect-video rounded-lg overflow-hidden bg-black border border-white/5">
+        <div className="mx-4 mt-4 relative aspect-video rounded-xl overflow-hidden bg-black/60 border border-white/5 shadow-inner">
             <video ref={videoRef} src={src} controls className="w-full h-full object-contain" />
-            <div className="absolute inset-0 pointer-events-none opacity-15 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.12)_50%)] bg-[length:100%_4px]" />
-            <div className="absolute top-2 left-2 w-6 h-6 border-l-2 border-t-2 opacity-40" style={{ borderColor: accent }} />
-            <div className="absolute top-2 right-2 w-6 h-6 border-r-2 border-t-2 opacity-40" style={{ borderColor: accent }} />
-            <div className="absolute bottom-2 left-2 w-6 h-6 border-l-2 border-b-2 opacity-40" style={{ borderColor: accent }} />
-            <div className="absolute bottom-2 right-2 w-6 h-6 border-r-2 border-b-2 opacity-40" style={{ borderColor: accent }} />
         </div>
     );
 }
@@ -250,13 +226,13 @@ function CCTVInfoPanel({ camera, onOpenStream }: { camera: CCTVCamera; onOpenStr
         <div className="p-5 space-y-4">
             {/* Camera details grid */}
             <div className="grid grid-cols-2 gap-3">
-                <InfoCard label="Camera Name" icon={<Camera className="w-3.5 h-3.5" />} accent="#00aaff">
+                <InfoCard label="Camera Name" icon={<Camera className="w-3.5 h-3.5" />}>
                     <span className="text-base font-bold text-[#00aaff]">{camera.camera_name}</span>
                 </InfoCard>
-                <InfoCard label="Location" icon={<MapPin className="w-3.5 h-3.5" />} accent="#00aaff">
+                <InfoCard label="Location" icon={<MapPin className="w-3.5 h-3.5" />}>
                     <span className="text-base font-bold">{camera.location_name || 'Unknown'}</span>
                 </InfoCard>
-                <InfoCard label="Status" icon={<Activity className="w-3.5 h-3.5" />} accent="#00aaff">
+                <InfoCard label="Status" icon={<Activity className="w-3.5 h-3.5" />}>
                     <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${camera.is_active ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                         <span className={`text-sm font-semibold ${camera.is_active ? 'text-green-400' : 'text-red-400'}`}>
@@ -264,7 +240,7 @@ function CCTVInfoPanel({ camera, onOpenStream }: { camera: CCTVCamera; onOpenStr
                         </span>
                     </div>
                 </InfoCard>
-                <InfoCard label="Stream" icon={<Video className="w-3.5 h-3.5" />} accent="#00aaff">
+                <InfoCard label="Stream" icon={<Video className="w-3.5 h-3.5" />}>
                     <span className="text-sm text-gray-300 truncate block">{camera.stream_url ? 'Available' : 'Default stream'}</span>
                 </InfoCard>
             </div>
@@ -305,21 +281,20 @@ function ThreatDetailsPanel({ danger }: { danger: ImmediateDanger }) {
     const level = threatLevel[danger.activity_type] || { label: 'UNKNOWN', color: '#ff0040' };
 
     return (
-        <div className="mx-4 mt-3 space-y-2">
-            <div className="flex items-center gap-2 mb-1">
-                <Zap className="w-3.5 h-3.5 text-[#ff0040]" />
-                <span className="text-[10px] font-mono text-[#ff0040] uppercase tracking-widest">Threat Intelligence</span>
+        <div className="mx-4 mt-4 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Threat Intelligence</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-                <InfoCard label="Activity Type" icon={<AlertTriangle className="w-3.5 h-3.5" />} accent="#ff0040">
+                <InfoCard label="Activity Type" icon={<AlertTriangle className="w-3.5 h-3.5" />}>
                     <span className="text-sm font-bold text-white uppercase">
                         {threatLabel[danger.activity_type] || danger.activity_type}
                     </span>
                 </InfoCard>
-                <InfoCard label="Threat Level" icon={<Crosshair className="w-3.5 h-3.5" />} accent="#ff0040">
+                <InfoCard label="Threat Level" icon={<Crosshair className="w-3.5 h-3.5" />}>
                     <span className="text-sm font-bold" style={{ color: level.color }}>{level.label}</span>
                 </InfoCard>
-                <InfoCard label="Status" icon={<Activity className="w-3.5 h-3.5" />} accent="#ff0040">
+                <InfoCard label="Status" icon={<Activity className="w-3.5 h-3.5" />}>
                     <div className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full ${danger.is_active ? 'bg-[#ff0040] animate-pulse' : 'bg-gray-500'}`} />
                         <span className={`text-sm font-semibold ${danger.is_active ? 'text-[#ff0040]' : 'text-gray-400'}`}>
@@ -352,24 +327,23 @@ function SuspiciousDetailsPanel({ log }: { log: SuspiciousLog }) {
     const st = statusStyles[log.status] || statusStyles.pending;
 
     return (
-        <div className="mx-4 mt-3 space-y-2">
-            <div className="flex items-center gap-2 mb-1">
-                <Eye className="w-3.5 h-3.5 text-[#ffcc00]" />
-                <span className="text-[10px] font-mono text-[#ffcc00] uppercase tracking-widest">Activity Details</span>
+        <div className="mx-4 mt-4 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Activity Details</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-                <InfoCard label="Status" icon={<Shield className="w-3.5 h-3.5" />} accent="#ffcc00">
+                <InfoCard label="Status" icon={<Shield className="w-3.5 h-3.5" />}>
                     <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: st.color }} />
                         <span className="text-sm font-semibold" style={{ color: st.color }}>{st.label}</span>
                     </div>
                 </InfoCard>
-                <InfoCard label="Person Hash" icon={<Hash className="w-3.5 h-3.5" />} accent="#ffcc00">
+                <InfoCard label="Person Hash" icon={<Hash className="w-3.5 h-3.5" />}>
                     <span className="text-sm font-mono text-gray-300">
                         {log.person_id_hash ? log.person_id_hash.slice(0, 10) + '…' : 'N/A'}
                     </span>
                 </InfoCard>
-                <InfoCard label="Camera ID" icon={<Camera className="w-3.5 h-3.5" />} accent="#ffcc00">
+                <InfoCard label="Camera ID" icon={<Camera className="w-3.5 h-3.5" />}>
                     <span className="text-sm font-mono text-gray-300">{log.location_id || 'N/A'}</span>
                 </InfoCard>
             </div>
@@ -409,17 +383,16 @@ function ReportPanel({ report }: { report: UserReportedCrime }) {
     };
 
     return (
-        <div className="px-4 pt-3 pb-1 space-y-3">
+        <div className="px-4 pt-4 pb-2 space-y-4">
             {/* Report info */}
-            <div className="flex items-center gap-2 mb-1">
-                <FileText className="w-3.5 h-3.5 text-[#a855f7]" />
-                <span className="text-[10px] font-mono text-[#a855f7] uppercase tracking-widest">Report Details</span>
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Report Details</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-                <InfoCard label="Crime Type" icon={<AlertTriangle className="w-3.5 h-3.5" />} accent="#a855f7">
+                <InfoCard label="Crime Type" icon={<AlertTriangle className="w-3.5 h-3.5" />}>
                     <span className="text-sm font-bold text-white uppercase">{report.crime_type.replace('_', ' ')}</span>
                 </InfoCard>
-                <InfoCard label="Validation" icon={<CheckCircle className="w-3.5 h-3.5" />} accent="#a855f7">
+                <InfoCard label="Validation" icon={<CheckCircle className="w-3.5 h-3.5" />}>
                     <StatusBadge status={report.validation_status} />
                 </InfoCard>
             </div>
@@ -464,9 +437,8 @@ function ReportPanel({ report }: { report: UserReportedCrime }) {
             {/* AI Analysis Section — shown when results exist */}
             {hasAIResults && (
                 <>
-                    <div className="flex items-center gap-2 pt-1">
-                        <Brain className="w-3.5 h-3.5 text-[#a855f7]" />
-                        <span className="text-[10px] font-mono text-[#a855f7] uppercase tracking-widest">AI Analysis</span>
+                    <div className="flex items-center gap-2 pt-2 mb-2">
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">AI Analysis</span>
                         {severityFromJustification && (
                             <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono uppercase border ${severityStyles[severityFromJustification]?.bg} ${severityStyles[severityFromJustification]?.border} ${severityStyles[severityFromJustification]?.color}`}>
                                 <ShieldAlert className="w-3 h-3" />
@@ -673,8 +645,8 @@ export default function EvidenceModal() {
                         sourceLabel={
                             isCCTV ? undefined
                                 : isDanger ? `Near: ${(selectedAlert as ImmediateDanger).activity_type}`
-                                : isSuspicious ? 'Near: Suspicious Activity'
-                                : `Near: ${(selectedAlert as UserReportedCrime).crime_type}`
+                                    : isSuspicious ? 'Near: Suspicious Activity'
+                                        : `Near: ${(selectedAlert as UserReportedCrime).crime_type}`
                         }
                         onClose={closeCCTVStream}
                     />
@@ -703,20 +675,20 @@ export default function EvidenceModal() {
                             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
                         >
                             <div
-                                className={`pointer-events-auto w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-[var(--bg-secondary)] border ${style.border} ${style.shadow}`}
+                                className={`pointer-events-auto w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-neutral-900/90 backdrop-blur-2xl border ${style.border} ${style.shadow}`}
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 {/* ———— Header ———— */}
-                                <div className={`px-5 py-4 flex items-center justify-between ${style.headerBg} ${style.headerBorder}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2.5 rounded-xl ${style.iconBg} ${style.iconColor}`}>
+                                <div className={`px-5 py-5 flex items-center justify-between ${style.headerBg} ${style.headerBorder}`}>
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-2xl ${style.iconBg} ${style.iconColor} shadow-sm`}>
                                             {getBeaconIcon(selectedAlertType)}
                                         </div>
                                         <div>
-                                            <h2 className={`text-lg font-bold uppercase tracking-wider ${style.titleColor}`}>
+                                            <h2 className={`text-xl font-bold tracking-tight ${style.titleColor}`}>
                                                 {style.title}
                                             </h2>
-                                            <p className="text-sm text-[var(--text-secondary)] capitalize">{subtitle}</p>
+                                            <p className="text-sm text-gray-400 font-medium capitalize mt-0.5">{subtitle}</p>
                                         </div>
                                     </div>
                                     <button onClick={closeModal} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
@@ -736,7 +708,7 @@ export default function EvidenceModal() {
                                 {isDanger && (
                                     <>
                                         <SourceCameraBar camera={nearestCamera} accentRgb={style.accentRgb} />
-                                        <EvidenceVideoPlayer url={evidenceUrl} accent={style.accent} videoRef={videoRef} />
+                                        <EvidenceVideoPlayer url={evidenceUrl} videoRef={videoRef} />
                                         <ThreatDetailsPanel danger={selectedAlert as ImmediateDanger} />
                                     </>
                                 )}
@@ -745,7 +717,7 @@ export default function EvidenceModal() {
                                 {isSuspicious && (
                                     <>
                                         <SourceCameraBar camera={nearestCamera} accentRgb={style.accentRgb} />
-                                        <EvidenceVideoPlayer url={evidenceUrl} accent={style.accent} videoRef={videoRef} />
+                                        <EvidenceVideoPlayer url={evidenceUrl} videoRef={videoRef} />
                                         <SuspiciousDetailsPanel log={selectedAlert as SuspiciousLog} />
                                     </>
                                 )}
@@ -753,7 +725,7 @@ export default function EvidenceModal() {
                                 {/* ———— Body: Purple (User Report — NOT CCTV) ———— */}
                                 {isReport && (
                                     <>
-                                        <EvidenceVideoPlayer url={evidenceUrl} accent={style.accent} videoRef={videoRef} />
+                                        <EvidenceVideoPlayer url={evidenceUrl} videoRef={videoRef} />
                                         <ReportPanel report={selectedAlert as UserReportedCrime} />
                                     </>
                                 )}
@@ -870,19 +842,15 @@ export default function EvidenceModal() {
 // Shared Sub-Components
 // ============================================================================
 
-/** Small info card used across panels */
-function InfoCard({ label, icon, accent, children }: {
-    label: string;
-    icon: React.ReactNode;
-    accent: string;
-    children: React.ReactNode;
-}) {
+// Shared utility component representing an Info Card
+function InfoCard({ label, icon, value, children }: { label: string; icon: React.ReactNode; value?: string; children?: React.ReactNode }) {
     return (
-        <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
-            <div className="flex items-center gap-1.5 mb-1.5">
-                <span style={{ color: `${accent}99` }}>{icon}</span>
-                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wide">{label}</span>
+        <div className="rounded-2xl bg-white/[0.03] border border-white/5 p-4 hover:bg-white/[0.05] transition-colors shadow-sm">
+            <div className="flex items-center gap-2 mb-2.5">
+                <div className="text-gray-400">{icon}</div>
+                <div className="text-xs font-medium text-gray-400">{label}</div>
             </div>
+            {value && <div className="text-sm font-semibold text-white">{value}</div>}
             {children}
         </div>
     );

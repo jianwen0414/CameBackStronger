@@ -28,27 +28,27 @@ const { width, height } = Dimensions.get('window');
 
 // Midnight Commander Map Style
 const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#757575" }] },
-  { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
-  { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#181818" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-  { featureType: "poi.park", elementType: "labels.text.stroke", stylers: [{ color: "#1b1b1b" }] },
-  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#373737" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
-  { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#4e4e4e" }] },
-  { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-  { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] }
+    { elementType: "geometry", stylers: [{ color: "#212121" }] },
+    { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+    { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#757575" }] },
+    { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+    { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
+    { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+    { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+    { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#181818" }] },
+    { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+    { featureType: "poi.park", elementType: "labels.text.stroke", stylers: [{ color: "#1b1b1b" }] },
+    { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
+    { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
+    { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#373737" }] },
+    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
+    { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#4e4e4e" }] },
+    { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+    { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
+    { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] }
 ];
 
 // Mock routes (in production, fetch from routing API)
@@ -88,10 +88,10 @@ const DEFAULT_COORDS = {
 function AnimatedBeacon({ hazard }: { hazard: any }) {
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const opacityAnim = useRef(new Animated.Value(0.8)).current;
-    
+
     // Determine beacon kind: 'immediate' (red), 'suspicious' (yellow), or 'report' (purple)
     const beaconKind: string = hazard.beacon_kind || (hazard.is_immediate ? 'immediate' : 'suspicious');
-    
+
     useEffect(() => {
         const pulse = Animated.loop(
             Animated.sequence([
@@ -107,7 +107,7 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
                 }),
             ])
         );
-        
+
         const opacity = Animated.loop(
             Animated.sequence([
                 Animated.timing(opacityAnim, {
@@ -122,10 +122,10 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
                 }),
             ])
         );
-        
+
         pulse.start();
         opacity.start();
-        
+
         return () => {
             pulse.stop();
             opacity.stop();
@@ -134,26 +134,26 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
 
     const ringStyle = beaconKind === 'immediate' ? styles.beaconRingDanger
         : beaconKind === 'report' ? styles.beaconRingReport
-        : styles.beaconRingSuspicious;
+            : styles.beaconRingSuspicious;
     const glowStyle = beaconKind === 'immediate' ? styles.beaconGlowDanger
         : beaconKind === 'report' ? styles.beaconGlowReport
-        : styles.beaconGlowSuspicious;
+            : styles.beaconGlowSuspicious;
     const coreStyle = beaconKind === 'immediate' ? styles.beaconCoreDanger
         : beaconKind === 'report' ? styles.beaconCoreReport
-        : styles.beaconCoreSuspicious;
+            : styles.beaconCoreSuspicious;
     const innerStyle = beaconKind === 'immediate' ? styles.beaconInnerDanger
         : beaconKind === 'report' ? styles.beaconInnerReport
-        : styles.beaconInnerSuspicious;
-    
+            : styles.beaconInnerSuspicious;
+
     return (
-        <Animated.View 
+        <Animated.View
             style={[
                 styles.beaconContainer,
                 {
                     transform: [{ scale: pulseAnim }],
                     opacity: opacityAnim,
                 }
-            ]} 
+            ]}
             pointerEvents="none"
         >
             {/* Pulsing outer ring */}
@@ -199,7 +199,7 @@ function AnimatedBeacon({ hazard }: { hazard: any }) {
 // Represents the user's location and heading
 function UserPuck({ heading }: { heading: number }) {
     // Large container to ensure the torch cone (which extends outwards) is not clipped by the Marker bitmap creation
-    const containerSize = 300; 
+    const containerSize = 300;
     const center = containerSize / 2;
     const coneHeight = 150;
     const coneWidth = 100;
@@ -212,7 +212,7 @@ function UserPuck({ heading }: { heading: number }) {
             alignItems: 'center',
         }}>
             <View style={{
-                height: coneHeight, 
+                height: coneHeight,
                 width: coneWidth,
                 position: 'absolute',
                 top: center - coneHeight, // Bottom of cone touches center
@@ -220,22 +220,22 @@ function UserPuck({ heading }: { heading: number }) {
                 alignItems: 'center',
             }}>
                 <Svg height="100%" width="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                     <Defs>
+                    <Defs>
                         <RadialGradient id="grad" cx="50%" cy="100%" rx="50%" ry="90%" fx="50%" fy="100%" gradientUnits="userSpaceOnUse">
                             <Stop offset="0%" stopColor="#00f5ff" stopOpacity="0.4" />
                             <Stop offset="100%" stopColor="#00f5ff" stopOpacity="0" />
                         </RadialGradient>
                     </Defs>
-                    <Path 
-                        d="M0,0 L100,0 L50,100 Z" 
-                        fill="url(#grad)" 
-                    /> 
+                    <Path
+                        d="M0,0 L100,0 L50,100 Z"
+                        fill="url(#grad)"
+                    />
                 </Svg>
             </View>
 
             {/* The Puck Itself - White circle with Blue border */}
             <View style={styles.puckCore}>
-                 <View style={styles.puckInner} />
+                <View style={styles.puckInner} />
             </View>
         </View>
     );
@@ -286,9 +286,9 @@ function ManeuverArrow({ isNext }: { isNext: boolean }) {
                 opacity: 0.3,
             }}>
                 <Svg width="100%" height="100%" viewBox="0 0 100 100">
-                    <Path 
-                         d="M 50 0 L 100 100 L 50 80 L 0 100 Z" 
-                         fill="#000000"
+                    <Path
+                        d="M 50 0 L 100 100 L 50 80 L 0 100 Z"
+                        fill="#000000"
                     />
                 </Svg>
             </View>
@@ -298,12 +298,12 @@ function ManeuverArrow({ isNext }: { isNext: boolean }) {
                 width: '100%',
                 height: '100%',
             }}>
-                 <Svg width="100%" height="100%" viewBox="0 0 100 100">
-                    <Path 
-                         d="M 50 0 L 100 100 L 50 80 L 0 100 Z" 
-                         fill="#FFFFFF"
-                         stroke="#cccccc"
-                         strokeWidth="1"
+                <Svg width="100%" height="100%" viewBox="0 0 100 100">
+                    <Path
+                        d="M 50 0 L 100 100 L 50 80 L 0 100 Z"
+                        fill="#FFFFFF"
+                        stroke="#cccccc"
+                        strokeWidth="1"
                     />
                 </Svg>
             </View>
@@ -316,7 +316,7 @@ export default function MapScreen() {
     const mapRef = useRef<MapView>(null);
     const locationWatchId = useRef<number | null>(null);
     const prevLocation = useRef<{ latitude: number; longitude: number; timestamp: number } | null>(null);
-    const [currentLocation, setCurrentLocation] = useState(DEFAULT_COORDS);
+    const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [currentHeading, setCurrentHeading] = useState(0); // Bearing in degrees
     const [activeRoute, setActiveRoute] = useState<RouteType>(null);
     const [transportationMode, setTransportationMode] = useState<TransportationMode>('driving');
@@ -329,7 +329,7 @@ export default function MapScreen() {
     const [originCoords, setOriginCoords] = useState<{
         latitude: number;
         longitude: number;
-    } | null>(DEFAULT_COORDS);
+    } | null>(null);
     const [originPlaceId, setOriginPlaceId] = useState<string | null>(null);
     const [destinationLabel, setDestinationLabel] = useState('');
     const [destinationCoords, setDestinationCoords] = useState<{
@@ -346,7 +346,7 @@ export default function MapScreen() {
     const [isRouting, setIsRouting] = useState(false);
     const [routeError, setRouteError] = useState<string | null>(null);
 
-    const { nearbyHazards, fetchNearbyHazards, zoneSafety, nearbyCount, subscribeToAlerts, setUserLocation } = useAlertStore();
+    const { allHazards, fetchNearbyHazards, fetchAllHazards, zoneSafety, nearbyCount, subscribeToAlerts, setUserLocation } = useAlertStore();
     const mapsApiKey = Config.GOOGLE_MAPS_API_KEY || '';
 
     const requestLocationPermission = async () => {
@@ -358,6 +358,9 @@ export default function MapScreen() {
     };
 
     const refreshCurrentLocation = async () => {
+        // Fetch hazards immediately so map isn't entirely empty while waiting for GPS
+        fetchAllHazards();
+
         const hasPermission = await requestLocationPermission();
         if (!hasPermission) {
             // If permission denied, use default coordinates
@@ -398,22 +401,14 @@ export default function MapScreen() {
                 setOriginPlaceId(null);
                 setRouteError('Unable to get GPS location. Using default location.');
             },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 },
         );
     };
 
     // Note: GPS location is only fetched when user clicks "Use GPS" button for Origin
     // but automatic updates happen during Navigation via startNavigation
     useEffect(() => {
-        // Initial map setup
-        mapRef.current?.animateToRegion({
-            latitude: DEFAULT_COORDS.latitude,
-            longitude: DEFAULT_COORDS.longitude,
-            latitudeDelta: 0.002, // Zoom level: Street (Closer)
-            longitudeDelta: 0.002,
-        });
-        
-        fetchNearbyHazards(DEFAULT_COORDS.latitude, DEFAULT_COORDS.longitude);
+        refreshCurrentLocation();
         const unsubscribe = subscribeToAlerts();
         return () => unsubscribe();
     }, []);
@@ -426,7 +421,7 @@ export default function MapScreen() {
 
 
     // Convert hazards to heatmap points
-    const heatmapPoints = nearbyHazards
+    const heatmapPoints = allHazards
         .filter(h => h.coordinates?.lat && h.coordinates?.long)
         .map(h => ({
             latitude: h.coordinates.lat,
@@ -463,9 +458,9 @@ export default function MapScreen() {
     const getManeuverIcon = (maneuver?: string) => {
         if (!maneuver) return ArrowUp;
         const m = maneuver.toLowerCase();
-        
+
         if (m.includes('uturn') || m.includes('u-turn')) return RotateCw;
-        
+
         // Turns/Curves - We want generic arrows for the road
         // The rotation logic will handle the direction
         return ArrowUp;
@@ -549,7 +544,7 @@ export default function MapScreen() {
                     }));
                     setNavigationSteps(steps);
                     setCurrentStepIndex(0);
-                    
+
                     // Calculate remaining distance and duration
                     const totalDistance = leg.distance || { text: '', value: 0 };
                     const totalDuration = leg.duration || { text: '', value: 0 };
@@ -581,22 +576,22 @@ export default function MapScreen() {
 
     const startNavigation = async () => {
         if (!navigationSteps.length || !activeRoute) return;
-        
+
         const hasPermission = await requestLocationPermission();
         if (!hasPermission) {
             setRouteError('Location permission required for navigation');
             return;
         }
-        
+
         setIsNavigating(true);
         setCurrentStepIndex(0);
-        
+
         // Start watching location
         locationWatchId.current = Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, heading: gpsHeading, speed } = position.coords;
                 const timestamp = position.timestamp || Date.now();
-                
+
                 // Calculate heading logic
                 // Priority:
                 // 1. Calculated Bearing (Course) if moving > 2m (Best for driving/navigation view "Course Up")
@@ -606,32 +601,32 @@ export default function MapScreen() {
                 let dist = 0;
 
                 if (prevLocation.current) {
-                     dist = haversineDistance(
-                         prevLocation.current.latitude,
-                         prevLocation.current.longitude,
-                         latitude,
-                         longitude
-                     );
+                    dist = haversineDistance(
+                        prevLocation.current.latitude,
+                        prevLocation.current.longitude,
+                        latitude,
+                        longitude
+                    );
                 }
-                
+
                 if (prevLocation.current && dist > 2) {
-                     // Moving: Calculate course vector
-                     finalHeading = calculateBearing(
-                         prevLocation.current.latitude,
-                         prevLocation.current.longitude,
-                         latitude,
-                         longitude
-                     );
+                    // Moving: Calculate course vector
+                    finalHeading = calculateBearing(
+                        prevLocation.current.latitude,
+                        prevLocation.current.longitude,
+                        latitude,
+                        longitude
+                    );
                 } else if (typeof gpsHeading === 'number' && gpsHeading >= 0) {
                     // Stationary or slow: Use compass
                     finalHeading = gpsHeading;
                 }
-                
+
                 // Update refs and state
                 prevLocation.current = { latitude, longitude, timestamp };
                 setCurrentLocation({ latitude, longitude });
                 setCurrentHeading(finalHeading);
-                
+
                 // Update map camera to follow user in "Course Up" mode (3D view)
                 // "Waze-like" behavior: Tilt (pitch) and rotate to heading
                 if (mapRef.current) {
@@ -642,10 +637,10 @@ export default function MapScreen() {
                         zoom: 19,  // Zoom level: Very Close (Street Detail)
                     }, { duration: 1000 });
                 }
-                
+
                 // Check if user has reached current step using functional state update
                 setCurrentStepIndex((currentIdx) => {
-// ...existing code...
+                    // ...existing code...
                     if (navigationSteps.length > currentIdx) {
                         const currentStep = navigationSteps[currentIdx];
                         const distanceToStep = haversineDistance(
@@ -654,11 +649,11 @@ export default function MapScreen() {
                             currentStep.endLocation.lat,
                             currentStep.endLocation.lng
                         );
-                        
+
                         // If within 50 meters of step end, move to next step
                         if (distanceToStep < 50 && currentIdx < navigationSteps.length - 1) {
                             const nextIdx = currentIdx + 1;
-                            
+
                             // Update remaining distance/duration
                             let remainingDist = 0;
                             let remainingDur = 0;
@@ -674,7 +669,7 @@ export default function MapScreen() {
                                 text: formatDuration(remainingDur),
                                 value: remainingDur,
                             });
-                            
+
                             return nextIdx;
                         }
                     }
@@ -709,10 +704,10 @@ export default function MapScreen() {
         const φ2 = lat2 * Math.PI / 180;
         const Δφ = (lat2 - lat1) * Math.PI / 180;
         const Δλ = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     };
 
@@ -742,8 +737,8 @@ export default function MapScreen() {
 
         const y = Math.sin(endLngRad - startLngRad) * Math.cos(endLatRad);
         const x = Math.cos(startLatRad) * Math.sin(endLatRad) -
-                Math.sin(startLatRad) * Math.cos(endLatRad) * Math.cos(endLngRad - startLngRad);
-        
+            Math.sin(startLatRad) * Math.cos(endLatRad) * Math.cos(endLngRad - startLngRad);
+
         const bearingRad = Math.atan2(y, x);
         const bearingDeg = (bearingRad * 180) / Math.PI;
         return (bearingDeg + 360) % 360; // Normalize to 0-360
@@ -751,7 +746,7 @@ export default function MapScreen() {
 
     // Cleanup location watch on unmount
     useEffect(() => {
-// ...existing code...
+        // ...existing code...
         return () => {
             if (locationWatchId.current !== null) {
                 Geolocation.clearWatch(locationWatchId.current);
@@ -767,7 +762,7 @@ export default function MapScreen() {
                 provider={PROVIDER_GOOGLE}
                 customMapStyle={DARK_MAP_STYLE}
                 initialRegion={{
-                    latitude: DEFAULT_COORDS.latitude,
+                    latitude: DEFAULT_COORDS.latitude, // Fallback if location not available yet, animateToRegion will fix it when ready
                     longitude: DEFAULT_COORDS.longitude,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
@@ -800,18 +795,18 @@ export default function MapScreen() {
                 )}
 
                 {/* Hazard Markers/Beacons */}
-                {nearbyHazards
+                {allHazards
                     .filter(h => {
                         const lat = h.coordinates?.lat;
                         const long = h.coordinates?.long;
-                        const isValid = 
-                            typeof lat === 'number' && 
-                            typeof long === 'number' && 
-                            !isNaN(lat) && 
+                        const isValid =
+                            typeof lat === 'number' &&
+                            typeof long === 'number' &&
+                            !isNaN(lat) &&
                             !isNaN(long) &&
-                            lat !== 0 && 
+                            lat !== 0 &&
                             long !== 0;
-                        
+
                         if (!isValid) {
                             console.warn('Hazard missing or invalid coordinates:', h.id, { lat, long, coordinates: h.coordinates });
                         }
@@ -865,11 +860,11 @@ export default function MapScreen() {
                 {/* Maneuver Markers (Seamless White Arrows on Road) */}
                 {activeRoute && navigationSteps
                     .map((step, index) => ({ step, index }))
-                    .filter(({ step, index }) => 
-                        index >= currentStepIndex && 
-                        step.maneuver && 
+                    .filter(({ step, index }) =>
+                        index >= currentStepIndex &&
+                        step.maneuver &&
                         step.startLocation &&
-                        step.polyline 
+                        step.polyline
                     )
                     .map(({ step, index }, i) => {
                         // Better Heading Calculation:
@@ -877,7 +872,7 @@ export default function MapScreen() {
                         // to ensure the arrow points exactly in the initial direction of the turn/road.
                         let bearing = 0;
                         const points = decodePolyline(step.polyline);
-                        
+
                         if (points.length >= 2) {
                             bearing = calculateBearing(
                                 points[0].latitude,
@@ -894,7 +889,7 @@ export default function MapScreen() {
                                 step.endLocation.lng
                             );
                         }
-                        
+
                         // For next maneuver, show slightly larger
                         const isNext = i === 0;
 
@@ -916,16 +911,16 @@ export default function MapScreen() {
                         );
                     })}
 
-                {/* User Puck - Custom location marker for navigation mode */}
-                {isNavigating && (
+                {/* User Puck Marker */}
+                {currentLocation && (
                     <Marker
                         coordinate={currentLocation}
                         anchor={{ x: 0.5, y: 0.5 }}
-                        flat={true} // Puck lies flat on the map
-                        zIndex={999}
-                        rotation={currentHeading} // Rotate marker explicitly for Android
+                        flat={true}
+                        rotation={currentHeading}
+                        zIndex={100}
                     >
-                        <UserPuck heading={0} />
+                        <UserPuck heading={currentHeading} />
                     </Marker>
                 )}
             </MapView>
@@ -945,15 +940,15 @@ export default function MapScreen() {
                     </Text>
                 </View>
             </View>
-            
+
             {/* Debug info - Remove in production */}
             {__DEV__ && (
                 <View style={styles.debugPanel}>
                     <Text style={styles.debugText}>
-                        Hazards: {nearbyHazards.length}
+                        Hazards: {allHazards.length}
                     </Text>
                     <Text style={styles.debugText}>
-                        With Coords: {nearbyHazards.filter(h => h.coordinates?.lat && h.coordinates?.long).length}
+                        With Coords: {allHazards.filter(h => h.coordinates?.lat && h.coordinates?.long).length}
                     </Text>
                     <Text style={styles.debugText}>
                         Origin: {originCoords ? `${originCoords.latitude.toFixed(4)}, ${originCoords.longitude.toFixed(4)}` : 'null'}
@@ -971,7 +966,7 @@ export default function MapScreen() {
                             <View style={styles.connectorLine} />
                             <View style={styles.destSquare} />
                         </View>
-                        
+
                         <View style={styles.inputsColumn}>
                             {/* Origin Input */}
                             <View style={styles.inputWrapper}>
@@ -1015,7 +1010,7 @@ export default function MapScreen() {
                                     <MapPin size={16} color="#00f5ff" />
                                 </TouchableOpacity>
                             </View>
-                            
+
                             <View style={styles.inputDivider} />
 
                             {/* Destination Input */}
@@ -1079,7 +1074,7 @@ export default function MapScreen() {
                                 <User size={18} color={transportationMode === 'walking' ? '#00f5ff' : '#606070'} />
                             </TouchableOpacity>
                         </View>
-                        
+
                         <TouchableOpacity
                             style={[styles.goButton, isRouting && styles.goButtonDisabled]}
                             onPress={fetchAndCalculateRoutes}
@@ -1088,7 +1083,7 @@ export default function MapScreen() {
                             <Text style={styles.goButtonText}>{isRouting ? '...' : 'GO'}</Text>
                         </TouchableOpacity>
                     </View>
-                    
+
                     {routeError && (
                         <Text style={styles.routeErrorText}>{routeError}</Text>
                     )}
@@ -1098,7 +1093,7 @@ export default function MapScreen() {
                         <View style={styles.routeTogglePanel}>
                             <TouchableOpacity
                                 style={[
-                                    styles.routeCard, 
+                                    styles.routeCard,
                                     activeRoute === 'safe' && styles.routeCardActiveSafe
                                 ]}
                                 onPress={() => {
@@ -1115,10 +1110,10 @@ export default function MapScreen() {
                                     {safestRoute ? `${safestRoute.safetyScore}% Safe` : '--'}
                                 </Text>
                             </TouchableOpacity>
-                            
+
                             <TouchableOpacity
                                 style={[
-                                    styles.routeCard, 
+                                    styles.routeCard,
                                     activeRoute === 'fast' && styles.routeCardActiveFast
                                 ]}
                                 onPress={() => {
@@ -1208,16 +1203,16 @@ export default function MapScreen() {
                 style={styles.centerButton}
                 onPress={() => {
                     // Center on current location if available, otherwise default coordinates
-                    const centerCoords = currentLocation.latitude && currentLocation.longitude
+                    const centerCoords = currentLocation?.latitude && currentLocation?.longitude
                         ? currentLocation
                         : DEFAULT_COORDS;
-                    
+
                     mapRef.current?.animateToRegion({
                         ...centerCoords,
                         latitudeDelta: 0.002, // Zoom level: Street (Closer) for clear view
                         longitudeDelta: 0.002,
                     });
-                    
+
                     // Refresh hazards globally and update user location for safety score
                     setUserLocation(centerCoords.latitude, centerCoords.longitude);
                     fetchNearbyHazards(centerCoords.latitude, centerCoords.longitude);
@@ -1262,18 +1257,18 @@ const styles = StyleSheet.create({
     },
     navPanel: {
         position: 'absolute',
-        top: 80,
+        bottom: 110, // Dock to bottom above nav bar instead of top
         left: 16,
         right: 16,
-        backgroundColor: 'rgba(15, 15, 20, 0.95)',
-        borderRadius: 20,
+        backgroundColor: 'rgba(24, 24, 27, 0.95)',
+        borderRadius: 24,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.08)',
-        padding: 16,
+        padding: 20,
         gap: 16,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.5,
+        shadowOpacity: 0.3,
         shadowRadius: 20,
         elevation: 10,
     },
@@ -1292,52 +1287,51 @@ const styles = StyleSheet.create({
         width: 12,
         height: 12,
         borderRadius: 6,
-        backgroundColor: '#00f5ff',
+        backgroundColor: '#FFFFFF',
         borderWidth: 2,
-        borderColor: '#fff',
+        borderColor: '#09090B',
     },
     connectorLine: {
         width: 2,
         flex: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         marginVertical: 4,
         borderRadius: 1,
     },
     destSquare: {
         width: 12,
         height: 12,
-        backgroundColor: '#ff0040',
-        borderWidth: 2,
-        borderColor: '#fff',
+        borderRadius: 4,
+        backgroundColor: '#FF3366',
     },
     inputsColumn: {
         flex: 1,
         gap: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        borderRadius: 12,
+        backgroundColor: '#18181B',
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.05)',
         overflow: 'hidden',
     },
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingRight: 8,
+        paddingRight: 12,
     },
     minimalInput: {
         flex: 1,
-        height: 44,
-        color: '#ffffff',
-        fontSize: 14,
-        paddingHorizontal: 12,
+        height: 48,
+        color: '#FFFFFF',
+        fontSize: 15,
+        paddingHorizontal: 16,
     },
     gpsIconBtn: {
         padding: 8,
     },
     inputDivider: {
         height: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        marginLeft: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        marginLeft: 16,
     },
     controlsRow: {
         flexDirection: 'row',
@@ -1347,52 +1341,54 @@ const styles = StyleSheet.create({
     },
     modeTabs: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderRadius: 12,
+        backgroundColor: '#18181B',
+        borderRadius: 16,
         padding: 4,
         gap: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
     },
     modeTab: {
-        padding: 10,
-        borderRadius: 8,
+        padding: 12,
+        borderRadius: 12,
     },
     modeTabActive: {
-        backgroundColor: 'rgba(0, 245, 255, 0.15)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
     },
     placesList: {
-        backgroundColor: 'rgba(10, 10, 20, 0.95)',
+        backgroundColor: '#18181B',
         borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.2)',
-        borderRadius: 12,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 16,
         marginTop: 4,
     },
     placesRow: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
     },
     placesDesc: {
-        color: '#d6f2ff',
+        color: '#E4E4E7',
+        fontSize: 14,
     },
     routeErrorText: {
-        color: '#ff6b6b',
-        fontSize: 12,
-        fontWeight: '600',
+        color: '#ef4444',
+        fontSize: 13,
+        fontWeight: '500',
     },
     goButton: {
         alignSelf: 'flex-end',
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-        borderRadius: 12,
-        backgroundColor: '#00f5ff',
+        paddingVertical: 14,
+        paddingHorizontal: 24,
+        borderRadius: 16,
+        backgroundColor: '#FFFFFF',
     },
     goButtonDisabled: {
-        opacity: 0.6,
+        opacity: 0.5,
     },
     goButtonText: {
-        color: '#0a0a0f',
+        color: '#09090B',
         fontWeight: '700',
-        fontSize: 12,
-        letterSpacing: 2,
+        fontSize: 14,
     },
     routeTogglePanel: {
         flexDirection: 'row',
@@ -1401,48 +1397,47 @@ const styles = StyleSheet.create({
     safetyBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(10, 10, 20, 0.9)',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 20,
+        backgroundColor: 'rgba(24, 24, 27, 0.9)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
         borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
-        gap: 6,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+        gap: 8,
     },
     safetyText: {
         fontSize: 14,
         fontWeight: '600',
-        fontFamily: 'monospace',
     },
     hazardCount: {
-        backgroundColor: 'rgba(10, 10, 20, 0.9)',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 20,
+        backgroundColor: 'rgba(24, 24, 27, 0.9)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
         borderWidth: 1,
-        borderColor: 'rgba(255, 204, 0, 0.3)',
+        borderColor: 'rgba(234, 179, 8, 0.3)',
     },
     hazardCountText: {
-        color: '#ffcc00',
-        fontSize: 12,
-        fontFamily: 'monospace',
+        color: '#eab308',
+        fontSize: 13,
+        fontWeight: '600',
     },
     routeCard: {
         flex: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderRadius: 12,
-        padding: 12,
+        backgroundColor: '#18181B',
+        borderRadius: 16,
+        padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        gap: 6,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+        gap: 8,
     },
     routeCardActiveSafe: {
-        backgroundColor: 'rgba(0, 255, 136, 0.1)',
-        borderColor: '#00ff88',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderColor: 'rgba(34, 197, 94, 0.4)',
     },
     routeCardActiveFast: {
-        backgroundColor: 'rgba(0, 245, 255, 0.1)',
-        borderColor: '#00f5ff',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderColor: '#FFFFFF',
     },
     routeCardHeader: {
         flexDirection: 'row',
@@ -1450,12 +1445,12 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     routeCardTitle: {
-        color: '#7b7b90',
-        fontSize: 12,
+        color: '#A1A1AA',
+        fontSize: 13,
         fontWeight: '600',
     },
     routeCardTextActive: {
-        color: '#ffffff',
+        color: '#FFFFFF',
     },
     routeInfoText: {
         color: '#ffffff',
@@ -1465,26 +1460,26 @@ const styles = StyleSheet.create({
     },
     centerButton: {
         position: 'absolute',
-        bottom: 180,
+        bottom: 120, // Moved down slightly since nav bar is floating
         right: 20,
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'rgba(10, 10, 20, 0.9)',
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: 'rgba(24, 24, 27, 0.95)',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
     legend: {
         position: 'absolute',
-        bottom: 20,
-        left: 20,
-        backgroundColor: 'rgba(10, 10, 20, 0.9)',
+        top: 80,
+        right: 20,
+        backgroundColor: 'rgba(24, 24, 27, 0.85)',
         padding: 12,
-        borderRadius: 8,
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
     legendTitle: {
         color: '#606070',

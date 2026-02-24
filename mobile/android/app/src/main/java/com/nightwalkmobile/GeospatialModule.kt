@@ -22,6 +22,8 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "GeospatialModule"
         private const val EARTH_RADIUS_METERS = 6371000.0
+        var currentSession: Session? = null
+        val sessionLock = Object()
     }
 
     override fun getName(): String = "GeospatialModule"
@@ -59,6 +61,7 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
             }
             
             earth = session?.earth
+            currentSession = session
             
             Log.d(TAG, "ARCore session initialized with Geospatial mode")
             promise.resolve(
@@ -80,6 +83,43 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Start the ARCore tracking session.
+     * This physically turns on the camera and begins Environmental/VPS tracking.
+     */
+    @ReactMethod
+    fun startTracking(promise: Promise) {
+        val currentSession = session ?: run {
+            promise.reject("NOT_INITIALIZED", "Geospatial session not initialized")
+            return
+        }
+        try {
+            currentSession.resume()
+            Log.d(TAG, "ARCore session resumed and tracking started")
+            promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+        } catch (e: Exception) {
+            promise.reject("START_TRACKING_ERROR", "Failed to start tracking: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Pause the ARCore tracking session.
+     */
+    @ReactMethod
+    fun stopTracking(promise: Promise) {
+        val currentSession = session ?: run {
+            promise.reject("NOT_INITIALIZED", "Geospatial session not initialized")
+            return
+        }
+        try {
+            currentSession.pause()
+            Log.d(TAG, "ARCore session paused")
+            promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+        } catch (e: Exception) {
+            promise.reject("STOP_TRACKING_ERROR", "Failed to stop tracking: ${e.message}", e)
+        }
+    }
+
+    /**
      * Get current tracking state of Geospatial API.
      * Returns tracking state and pose accuracy.
      */
@@ -92,6 +132,8 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
         
         try {
             val trackingState = currentEarth.trackingState
+            val earthState = currentEarth.earthState
+            
             val geospatialPose = if (trackingState == TrackingState.TRACKING) {
                 currentEarth.cameraGeospatialPose
             } else null
@@ -99,6 +141,7 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
             promise.resolve(
                 Arguments.createMap().apply {
                     putString("trackingState", trackingState.name)
+                    putString("earthState", earthState.name)
                     putBoolean("isTracking", trackingState == TrackingState.TRACKING)
                     
                     geospatialPose?.let { pose ->
@@ -232,9 +275,12 @@ class GeospatialModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun destroy(promise: Promise) {
         try {
-            session?.close()
-            session = null
-            earth = null
+            synchronized(sessionLock) {
+                session?.close()
+                session = null
+                earth = null
+                currentSession = null
+            }
             
             promise.resolve(
                 Arguments.createMap().apply {

@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useCallback, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Tile3DLayer } from '@deck.gl/geo-layers';
-import type { MapViewState, PickingInfo } from '@deck.gl/core';
+import type { MapViewState } from '@deck.gl/core';
 import { useAlertStore } from '../store/useAlertStore';
 import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from '../lib/supabase';
 import BeaconFilterPanel from './BeaconFilterPanel';
@@ -51,12 +51,12 @@ interface ResidentialArea {
 }
 
 const RESIDENTIAL_AREAS: ResidentialArea[] = [
-    { id: 'taman-maju',     name: 'Taman Maju',     longitude: 101.105, latitude: 4.652 },
-    { id: 'kampung-baru',   name: 'Kampung Baru',   longitude: 101.115, latitude: 4.650 },
-    { id: 'bukit-tinggi',   name: 'Bukit Tinggi',   longitude: 101.109, latitude: 4.644 },
-    { id: 'sri-perdana',    name: 'Sri Perdana',    longitude: 101.118, latitude: 4.646 },
-    { id: 'desa-harmoni',   name: 'Desa Harmoni',   longitude: 101.103, latitude: 4.641 },
-    { id: 'laman-sentral',  name: 'Laman Sentral',  longitude: 101.120, latitude: 4.653 },
+    { id: 'taman-maju', name: 'Taman Maju', longitude: 101.105, latitude: 4.652 },
+    { id: 'kampung-baru', name: 'Kampung Baru', longitude: 101.115, latitude: 4.650 },
+    { id: 'bukit-tinggi', name: 'Bukit Tinggi', longitude: 101.109, latitude: 4.644 },
+    { id: 'sri-perdana', name: 'Sri Perdana', longitude: 101.118, latitude: 4.646 },
+    { id: 'desa-harmoni', name: 'Desa Harmoni', longitude: 101.103, latitude: 4.641 },
+    { id: 'laman-sentral', name: 'Laman Sentral', longitude: 101.120, latitude: 4.653 },
 ];
 
 const AREA_RADIUS = 0.006; // roughly 600m radius to group beacons into areas
@@ -69,7 +69,7 @@ interface GodViewProps {
 // Beacon Components
 // ============================================================================
 
-function DangerBeacon({ alert, onClick, activityType }: {
+function DangerBeacon({ onClick, activityType }: {
     alert: ImmediateDanger;
     onClick: () => void;
     activityType: string;
@@ -94,7 +94,7 @@ function DangerBeacon({ alert, onClick, activityType }: {
     );
 }
 
-function SuspiciousBeacon({ alert, onClick }: {
+function SuspiciousBeacon({ onClick }: {
     alert: SuspiciousLog;
     onClick: () => void;
 }) {
@@ -166,8 +166,8 @@ function LayerBreadcrumb({ currentLayer, onLayerChange }: {
     onLayerChange: (layer: ViewLayer) => void;
 }) {
     const layers = [
-        { id: 1 as ViewLayer, label: 'City Overview', icon: '🏙' },
-        { id: 2 as ViewLayer, label: 'Residential', icon: '🏘' },
+        { id: 1 as ViewLayer, label: 'City Overview' },
+        { id: 2 as ViewLayer, label: 'Residential' },
     ];
 
     return (
@@ -179,13 +179,12 @@ function LayerBreadcrumb({ currentLayer, onLayerChange }: {
                     )}
                     <button
                         onClick={() => onLayerChange(layer.id)}
-                        className={`px-3 py-1 rounded-md text-xs font-mono transition-all ${
-                            currentLayer === layer.id
-                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
-                                : 'text-gray-400 hover:text-white hover:bg-white/5 cursor-pointer'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${currentLayer === layer.id
+                            ? 'bg-white text-black shadow-md'
+                            : 'text-gray-200 hover:text-white hover:bg-white/10 cursor-pointer'
+                            }`}
                     >
-                        {layer.icon} {layer.label}
+                        {layer.label}
                     </button>
                 </div>
             ))}
@@ -287,24 +286,12 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                 layers={layers}
                 style={{ background: 'var(--bg-primary)' }}
             >
-                {({ viewState: currentViewState, viewport }) => {
+                {({ viewport }) => {
                     if (!viewport) return null;
 
                     return (
                         <>
-                            {/* Monitor Bezel Overlay */}
-                            <div className="absolute inset-0 pointer-events-none z-10 rounded-lg overflow-hidden">
-                                <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-cyan-500/50 rounded-tl-lg" />
-                                <div className="absolute top-0 right-0 w-16 h-16 border-t-2 border-r-2 border-cyan-500/50 rounded-tr-lg" />
-                                <div className="absolute bottom-0 left-0 w-16 h-16 border-b-2 border-l-2 border-cyan-500/50 rounded-bl-lg" />
-                                <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-cyan-500/50 rounded-br-lg" />
-                                <div className="absolute top-4 left-20 text-[10px] font-mono text-cyan-500/50 tracking-widest">SYS.VISUAL.01</div>
-                                <div className="absolute bottom-4 right-20 text-[10px] font-mono text-cyan-500/50 tracking-widest">LIVE FEED // SECURE</div>
-                                <div className="absolute top-1/2 left-1/2 w-8 h-8 -translate-x-1/2 -translate-y-1/2 border border-white/20 rounded-full" />
-                                <div className="absolute top-1/2 left-1/2 w-[1px] h-8 -translate-x-1/2 -translate-y-1/2 bg-white/20" />
-                                <div className="absolute top-1/2 left-1/2 w-8 h-[1px] -translate-x-1/2 -translate-y-1/2 bg-white/20" />
-                                <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_4px,3px_100%] pointer-events-none opacity-20" />
-                            </div>
+
 
                             {/* ===== City Overview: Residential Area Representative Beacons ===== */}
                             {currentLayer === 1 && areaStatuses.map(area => {
@@ -435,20 +422,20 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                 <div className="hud-header mb-2">Legend</div>
                 <div className="flex flex-col gap-2 text-xs">
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-[#ff0040]" style={{ boxShadow: '0 0 8px #ff0040' }} />
-                        <span>Immediate Danger</span>
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-white/20" />
+                        <span className="text-gray-300">Immediate Danger</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-[#ffcc00]" style={{ boxShadow: '0 0 8px #ffcc00' }} />
-                        <span>Suspicious Activity</span>
+                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 border border-white/20" />
+                        <span className="text-gray-300">Suspicious Activity</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-[#00aaff]" style={{ boxShadow: '0 0 8px #00aaff' }} />
-                        <span>CCTV Camera</span>
+                        <div className="w-2.5 h-2.5 rounded-full bg-sky-400 border border-white/20" />
+                        <span className="text-gray-300">CCTV Camera</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-[#a855f7]" style={{ boxShadow: '0 0 8px #a855f7' }} />
-                        <span>User Reported Crime</span>
+                        <div className="w-2.5 h-2.5 rounded-full bg-purple-500 border border-white/20" />
+                        <span className="text-gray-300">User Reported Crime</span>
                     </div>
                 </div>
             </div>
@@ -456,9 +443,9 @@ export default function GodView({ onAlertClick }: GodViewProps) {
             {/* Live Threat Alert */}
             {immediateDangers.length > 0 && (
                 <div className="absolute top-14 right-4 z-10">
-                    <div className="flex items-center gap-2 glass-strong p-3 border-l-4 border-[#ff0040]">
+                    <div className="flex items-center gap-2 glass-strong p-3 border-l-4 border-red-500">
                         <div className="beacon-red" />
-                        <span className="text-glow-red font-bold text-sm uppercase tracking-wider">
+                        <span className="text-red-500 font-bold text-sm tracking-wider">
                             Live Threat Detected
                         </span>
                     </div>

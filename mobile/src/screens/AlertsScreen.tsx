@@ -10,197 +10,32 @@ import {
     FlatList,
     TouchableOpacity,
     RefreshControl,
+    Animated,
 } from 'react-native';
-import { AlertTriangle, Clock, MapPin, Bell, CheckCircle } from 'lucide-react-native';
-import { supabase, ImmediateDanger, SuspiciousLog, parsePostGISPoint } from '../lib/supabase';
+import { AlertTriangle, MapPin, Bell, ShieldAlert } from 'lucide-react-native';
+import { supabase } from '../lib/supabase';
+import { useAlertStore } from '../store/useAlertStore';
+import type { HazardData } from '../lib/supabase';
 
-type AlertItem = (ImmediateDanger | SuspiciousLog) & {
-    alertType: 'immediate' | 'suspicious';
-};
+type AlertItem = HazardData;
 
 export default function AlertsScreen() {
-    const [alerts, setAlerts] = useState<AlertItem[]>([]);
+    const { nearbyHazards, fetchAllHazards, isLoading } = useAlertStore();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [filter, setFilter] = useState<'all' | 'immediate' | 'suspicious'>('all');
 
-    // Fetch alerts
+    const alerts = nearbyHazards;
+
     const fetchAlerts = async () => {
         setIsRefreshing(true);
-
-        try {
-            // Fetch immediate dangers
-            const { data: dangers, error: dangerError } = await supabase
-                .from('immediate_danger_logs')
-                .select('*')
-                .eq('is_active', true)
-                .order('detected_at', { ascending: false })
-                .limit(50);
-
-            if (dangerError) {
-                console.error('Error fetching immediate dangers:', dangerError);
-                throw dangerError;
-            }
-
-            // Fetch suspicious logs
-            const { data: suspicious, error: suspiciousError } = await supabase
-                .from('suspicious_individual_logs')
-                .select('*')
-                .order('detected_at', { ascending: false })
-                .limit(50);
-
-            if (suspiciousError) {
-                console.error('Error fetching suspicious logs:', suspiciousError);
-                throw suspiciousError;
-            }
-
-            const allAlerts: AlertItem[] = [
-                ...(dangers || []).map(d => ({ ...d, alertType: 'immediate' as const })),
-                ...(suspicious || []).map(s => ({ ...s, alertType: 'suspicious' as const })),
-            ].sort(
-                (a, b) =>
-                    new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime(),
-            );
-
-            setAlerts(allAlerts);
-        } catch (error) {
-            console.error('Failed to fetch alerts:', error);
-            // On error, set empty array to show empty state
-            setAlerts([]);
-        } finally {
-            setIsRefreshing(false);
-        }
+        await fetchAllHazards();
+        setIsRefreshing(false);
     };
-
-    useEffect(() => {
-        fetchAlerts();
-    }, []);
-
-    // Subscribe to real-time updates
-    useEffect(() => {
-        const channel = supabase
-            .channel('alerts-screen')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
-                payload => {
-                    const newAlert = {
-                        ...payload.new,
-                        alertType: 'immediate' as const,
-                    } as AlertItem;
-                    // Only add if active
-                    if (newAlert.is_active) {
-                        setAlerts(prev => [newAlert, ...prev]);
-                        // Show local notification would go here
-                    }
-                },
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
-                payload => {
-                    const updatedAlert = {
-                        ...payload.new,
-                        alertType: 'immediate' as const,
-                    } as AlertItem;
-                    setAlerts(prev => {
-                        if (!updatedAlert.is_active) {
-                            return prev.filter(a => a.id !== updatedAlert.id);
-                        }
-                        const existingIndex = prev.findIndex(a => a.id === updatedAlert.id);
-                        if (existingIndex >= 0) {
-                            const updated = [...prev];
-                            updated[existingIndex] = updatedAlert;
-                            return updated;
-                        }
-                        return [updatedAlert, ...prev];
-                    });
-                },
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'immediate_danger_logs',
-                },
-                payload => {
-                    const deletedId = payload.old.id;
-                    setAlerts(prev => prev.filter(a => a.id !== deletedId));
-                },
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'suspicious_individual_logs',
-                },
-                payload => {
-                    const newAlert = {
-                        ...payload.new,
-                        alertType: 'suspicious' as const,
-                    } as AlertItem;
-                    setAlerts(prev => [newAlert, ...prev]);
-                },
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'suspicious_individual_logs',
-                },
-                payload => {
-                    const updatedAlert = {
-                        ...payload.new,
-                        alertType: 'suspicious' as const,
-                    } as AlertItem;
-                    setAlerts(prev => {
-                        // Remove if status changed from pending
-                        if (updatedAlert.status !== 'pending') {
-                            return prev.filter(a => a.id !== updatedAlert.id);
-                        }
-                        const existingIndex = prev.findIndex(a => a.id === updatedAlert.id);
-                        if (existingIndex >= 0) {
-                            const updated = [...prev];
-                            updated[existingIndex] = updatedAlert;
-                            return updated;
-                        }
-                        return [updatedAlert, ...prev];
-                    });
-                },
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'suspicious_individual_logs',
-                },
-                payload => {
-                    const deletedId = payload.old.id;
-                    setAlerts(prev => prev.filter(a => a.id !== deletedId));
-                },
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
 
     // Filter alerts
     const filteredAlerts = alerts.filter(alert => {
         if (filter === 'all') return true;
-        return alert.alertType === filter;
+        return alert.beacon_kind === filter;
     });
 
     const formatTime = (dateString: string) => {
@@ -216,35 +51,41 @@ export default function AlertsScreen() {
     };
 
     const renderAlert = ({ item }: { item: AlertItem }) => {
-        const isImmediate = item.alertType === 'immediate';
-        const coords = parsePostGISPoint(item.coordinates);
-        const activityType = 'activity_type' in item ? item.activity_type : 'suspicious';
+        const isImmediate = item.beacon_kind === 'immediate';
+        const coords = item.coordinates;
+        const activityType = item.type || 'suspicious';
 
         return (
             <TouchableOpacity
-                style={[styles.alertCard, isImmediate && styles.alertCardDanger]}
-                activeOpacity={0.7}
+                style={[
+                    styles.alertCard,
+                    isImmediate ? styles.alertCardDanger : styles.alertCardNormal
+                ]}
+                activeOpacity={isImmediate ? 0.9 : 0.7}
             >
                 {/* Icon */}
                 <View
                     style={[
                         styles.alertIcon,
-                        { backgroundColor: isImmediate ? 'rgba(255, 0, 64, 0.2)' : 'rgba(255, 204, 0, 0.2)' },
+                        { backgroundColor: isImmediate ? 'rgba(255, 51, 102, 0.1)' : 'rgba(255, 255, 255, 0.05)' },
                     ]}
                 >
-                    <AlertTriangle size={20} color={isImmediate ? '#ff0040' : '#ffcc00'} />
+                    {isImmediate ?
+                        <ShieldAlert size={isImmediate ? 24 : 20} color="#FF3366" /> :
+                        <AlertTriangle size={20} color="#A1A1AA" />
+                    }
                 </View>
 
                 {/* Content */}
                 <View style={styles.alertContent}>
                     <View style={styles.alertHeader}>
-                        <Text style={styles.alertType}>
+                        <Text style={[styles.alertType, isImmediate && styles.alertTypeDanger]}>
                             {isImmediate ? 'IMMEDIATE DANGER' : 'SUSPICIOUS ACTIVITY'}
                         </Text>
                         <Text style={styles.alertTime}>{formatTime(item.detected_at)}</Text>
                     </View>
 
-                    <Text style={styles.alertActivity}>
+                    <Text style={[styles.alertActivity, isImmediate && styles.alertActivityDanger]}>
                         {activityType.charAt(0).toUpperCase() + activityType.slice(1)} detected
                     </Text>
 
@@ -255,15 +96,6 @@ export default function AlertsScreen() {
                                 {coords.lat.toFixed(4)}, {coords.long.toFixed(4)}
                             </Text>
                         </View>
-                    )}
-                </View>
-
-                {/* Status indicator */}
-                <View style={styles.alertStatus}>
-                    {'status' in item && item.status === 'resolved' ? (
-                        <CheckCircle size={16} color="#00ff88" />
-                    ) : (
-                        <View style={[styles.statusDot, isImmediate && styles.statusDotDanger]} />
                     )}
                 </View>
             </TouchableOpacity>
@@ -304,7 +136,7 @@ export default function AlertsScreen() {
                 contentContainerStyle={styles.list}
                 refreshControl={
                     <RefreshControl
-                        refreshing={isRefreshing}
+                        refreshing={isLoading || isRefreshing}
                         onRefresh={fetchAlerts}
                         tintColor="#00f5ff"
                     />
@@ -324,13 +156,13 @@ export default function AlertsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0a0a0f',
+        backgroundColor: '#09090B',
     },
     header: {
-        padding: 20,
-        paddingTop: 40,
+        padding: 24,
+        paddingTop: 60, // Ensure clear of notch
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        borderBottomColor: 'rgba(255, 255, 255, 0.05)',
     },
     headerTitle: {
         flexDirection: 'row',
@@ -338,90 +170,107 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     title: {
-        fontSize: 28,
+        fontSize: 32,
         fontWeight: '700',
-        color: '#ffffff',
+        color: '#FFFFFF',
+        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 14,
-        color: '#606070',
-        marginTop: 4,
+        fontSize: 15,
+        color: '#A1A1AA',
+        marginTop: 6,
     },
     filterTabs: {
         flexDirection: 'row',
-        padding: 12,
+        padding: 16,
         gap: 8,
     },
     filterTab: {
-        flex: 1,
         paddingVertical: 10,
-        paddingHorizontal: 16,
-        borderRadius: 8,
-        backgroundColor: 'rgba(26, 26, 37, 0.8)',
+        paddingHorizontal: 18,
+        borderRadius: 20,
+        backgroundColor: '#18181B',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
     },
     filterTabActive: {
-        backgroundColor: 'rgba(0, 245, 255, 0.15)',
-        borderWidth: 1,
-        borderColor: 'rgba(0, 245, 255, 0.3)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     filterTabText: {
-        color: '#606070',
+        color: '#A1A1AA',
         fontSize: 13,
         fontWeight: '600',
     },
     filterTabTextActive: {
-        color: '#00f5ff',
+        color: '#FFFFFF',
     },
     list: {
-        padding: 12,
-        gap: 12,
+        padding: 16,
+        gap: 16,
+        paddingBottom: 100, // accommodate flying tab bar
     },
     alertCard: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(26, 26, 37, 0.8)',
-        borderRadius: 12,
-        padding: 16,
+        backgroundColor: '#18181B',
+        borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        marginBottom: 12,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    alertCardNormal: {
+        padding: 16,
     },
     alertCardDanger: {
-        borderColor: 'rgba(255, 0, 64, 0.4)',
-        backgroundColor: 'rgba(255, 0, 64, 0.05)',
+        padding: 20, // larger padding for priority
+        borderColor: 'rgba(255, 51, 102, 0.4)',
+        backgroundColor: 'rgba(255, 51, 102, 0.05)',
+        shadowColor: '#FF3366',
+        shadowOpacity: 0.1,
+        shadowRadius: 15,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 5,
     },
     alertIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
+        width: 48,
+        height: 48,
+        borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 16,
     },
     alertContent: {
         flex: 1,
+        justifyContent: 'center',
     },
     alertHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: 6,
     },
     alertType: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '700',
-        color: '#a0a0b0',
+        color: '#A1A1AA',
         letterSpacing: 1,
     },
+    alertTypeDanger: {
+        color: '#FF3366',
+    },
     alertTime: {
-        fontSize: 11,
+        fontSize: 12,
         color: '#606070',
     },
     alertActivity: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#ffffff',
-        marginBottom: 6,
+        color: '#E4E4E7',
+        marginBottom: 8,
+    },
+    alertActivityDanger: {
+        fontSize: 18,
+        color: '#FFFFFF',
     },
     alertLocation: {
         flexDirection: 'row',
@@ -429,22 +278,9 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     alertLocationText: {
-        fontSize: 11,
-        color: '#606070',
+        fontSize: 12,
+        color: '#A1A1AA',
         fontFamily: 'monospace',
-    },
-    alertStatus: {
-        justifyContent: 'center',
-        paddingLeft: 12,
-    },
-    statusDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#ffcc00',
-    },
-    statusDotDanger: {
-        backgroundColor: '#ff0040',
     },
     emptyState: {
         flex: 1,
@@ -454,12 +290,13 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: 18,
-        color: '#606070',
+        color: '#A1A1AA',
         marginTop: 16,
+        fontWeight: '600',
     },
     emptySubtext: {
         fontSize: 14,
-        color: '#00ff88',
+        color: '#606070',
         marginTop: 4,
     },
 });

@@ -83,7 +83,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
     if (error) {
       triggerShake();
-      
+
       // Better error messages for common issues
       if (error.message.includes('Email not confirmed')) {
         Alert.alert(
@@ -159,10 +159,10 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
       } catch (e) {
         console.warn('Vibration not available');
       }
-      
+
       // Check if email confirmation is required
       const needsConfirmation = data.user.email_confirmed_at === null;
-      
+
       if (needsConfirmation) {
         Alert.alert(
           'Verify Your Email',
@@ -200,25 +200,25 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="light-content" backgroundColor="#020204" />
-      
+
       {/* Background Grid Effect */}
       <View style={styles.gridBackground} />
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.content, 
-            { 
+            styles.content,
+            {
               opacity: fadeAnim,
-              transform: [{ translateX: shakeAnim }] 
+              transform: [{ translateX: shakeAnim }]
             }
           ]}
         >
@@ -303,7 +303,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                 onChangeText={setPassword}
                 onFocus={() => setFocusedInput('password')}
                 onBlur={() => setFocusedInput(null)}
-                secureTextEntry
+                secureTextEntry={false}
                 placeholderTextColor="transparent"
               />
               {focusedInput === 'password' && <View style={styles.inputGlow} />}
@@ -320,8 +320,8 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             >
               <View style={styles.loginBtnContent}>
                 <Text style={styles.loginBtnText}>
-                  {loading 
-                    ? (mode === 'login' ? 'SIGNING IN...' : 'CREATING ACCOUNT...') 
+                  {loading
+                    ? (mode === 'login' ? 'SIGNING IN...' : 'CREATING ACCOUNT...')
                     : (mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT')
                   }
                 </Text>
@@ -330,13 +330,13 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <View style={styles.btnReactorGlow} />
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.switchModeBtn} 
+            <TouchableOpacity
+              style={styles.switchModeBtn}
               onPress={() => setMode(mode === 'login' ? 'register' : 'login')}
             >
               <Text style={styles.switchModeText}>
-                {mode === 'login' 
-                  ? "Don't have an account? Register" 
+                {mode === 'login'
+                  ? "Don't have an account? Register"
                   : 'Already have an account? Sign In'
                 }
               </Text>
@@ -344,7 +344,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
           </View>
         </Animated.View>
       </ScrollView>
-      
+
       {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>NIGHTWALK CITIZEN NETWORK v2.0.77</Text>

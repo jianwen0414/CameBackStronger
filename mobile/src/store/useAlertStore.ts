@@ -172,7 +172,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                 `${hazards.filter(h => h.beacon_kind === 'report').length} purple)`,
             );
 
-            set({ allHazards: hazards, nearbyHazards: hazards, isLoading: false });
+            set({ allHazards: hazards, isLoading: false });
             get().calculateZoneSafety();
         } catch (error) {
             console.error('Failed to fetch global hazards:', error);
@@ -221,7 +221,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                             };
                             set(state => {
                                 const updated = [hazard, ...state.allHazards];
-                                return { allHazards: updated, nearbyHazards: updated };
+                                return { allHazards: updated };
                             });
                             get().calculateZoneSafety();
                         }
@@ -237,21 +237,21 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                     set(state => {
                         if (!d.is_active) {
                             const filtered = state.allHazards.filter(h => h.id !== d.id);
-                            return { allHazards: filtered, nearbyHazards: filtered };
+                            return { allHazards: filtered };
                         }
                         if (coords) {
                             const idx = state.allHazards.findIndex(h => h.id === d.id);
                             if (idx >= 0) {
                                 const updated = [...state.allHazards];
                                 updated[idx] = { ...updated[idx], coordinates: coords, type: d.activity_type, detected_at: d.detected_at };
-                                return { allHazards: updated, nearbyHazards: updated };
+                                return { allHazards: updated };
                             }
                             const newList = [{
                                 id: d.id, coordinates: coords, type: d.activity_type,
                                 distance_meters: 0, bearing_degrees: 0, is_immediate: true,
                                 detected_at: d.detected_at, beacon_kind: 'immediate' as BeaconKind,
                             }, ...state.allHazards];
-                            return { allHazards: newList, nearbyHazards: newList };
+                            return { allHazards: newList };
                         }
                         return state;
                     });
@@ -264,7 +264,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                 payload => {
                     set(state => {
                         const filtered = state.allHazards.filter(h => h.id !== payload.old.id);
-                        return { allHazards: filtered, nearbyHazards: filtered };
+                        return { allHazards: filtered };
                     });
                     get().calculateZoneSafety();
                 },
@@ -281,7 +281,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                             // Remove if it was previously in the list
                             set(state => {
                                 const filtered = state.allHazards.filter(h => h.id !== report.id);
-                                return { allHazards: filtered, nearbyHazards: filtered };
+                                return { allHazards: filtered };
                             });
                             get().calculateZoneSafety();
                             return;
@@ -315,10 +315,10 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                                 if (idx >= 0) {
                                     const updated = [...state.allHazards];
                                     updated[idx] = newH;
-                                    return { allHazards: updated, nearbyHazards: updated };
+                                    return { allHazards: updated };
                                 }
                                 const newList = [newH, ...state.allHazards];
-                                return { allHazards: newList, nearbyHazards: newList };
+                                return { allHazards: newList };
                             });
                             get().calculateZoneSafety();
                         } else {
@@ -328,7 +328,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                     if (payload.eventType === 'DELETE') {
                         set(state => {
                             const filtered = state.allHazards.filter(h => h.id !== payload.old.id);
-                            return { allHazards: filtered, nearbyHazards: filtered };
+                            return { allHazards: filtered };
                         });
                         get().calculateZoneSafety();
                     }
@@ -346,12 +346,13 @@ export const useAlertStore = create<AlertState>((set, get) => ({
         const { allHazards, userLat, userLong } = get();
 
         if (allHazards.length === 0 || (userLat === 0 && userLong === 0)) {
-            set({ zoneSafety: 100, nearbyCount: 0 });
+            set({ zoneSafety: 100, nearbyCount: 0, nearbyHazards: [] });
             return;
         }
 
         let safetyScore = 100;
         let nearby = 0;
+        const newlyNearby: HazardData[] = [];
 
         allHazards.forEach(hazard => {
             const dist = haversineMetres(
@@ -361,11 +362,16 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             if (dist > NEARBY_RADIUS_M) return; // outside 1 km — skip for safety calc
 
             nearby++;
+            newlyNearby.push(hazard);
             const distanceFactor = Math.max(0, 1 - dist / NEARBY_RADIUS_M);
             const severity = hazard.is_immediate ? 35 : hazard.beacon_kind === 'report' ? 20 : 15;
             safetyScore -= severity * distanceFactor;
         });
 
-        set({ zoneSafety: Math.max(0, Math.round(safetyScore)), nearbyCount: nearby });
+        newlyNearby.sort(
+            (a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
+        );
+
+        set({ zoneSafety: Math.max(0, Math.round(safetyScore)), nearbyCount: nearby, nearbyHazards: newlyNearby });
     },
 }));

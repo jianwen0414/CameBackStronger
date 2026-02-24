@@ -17,6 +17,8 @@ interface GeospatialPose {
 interface TrackingResult {
     trackingState: 'TRACKING' | 'PAUSED' | 'STOPPED';
     isTracking: boolean;
+    earthState?: string;
+    failureReason?: string;
     latitude?: number;
     longitude?: number;
     altitude?: number;
@@ -56,6 +58,8 @@ interface VpsCheckResult {
 
 interface GeospatialModuleType {
     initialize(): Promise<InitResult>;
+    startTracking(): Promise<{ success: boolean }>;
+    stopTracking(): Promise<{ success: boolean }>;
     getTrackingState(): Promise<TrackingResult>;
     getGeospatialAnchor(lat: number, lng: number): Promise<AnchorResult>;
     checkVpsAvailability(lat: number, lng: number): Promise<VpsCheckResult>;

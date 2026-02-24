@@ -4,10 +4,11 @@
 import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, StyleSheet, StatusBar } from 'react-native';
-import { Scan, Map, Bell, FileWarning } from 'lucide-react-native';
+import { View, StyleSheet, StatusBar, Platform } from 'react-native';
+import { Home, Scan, Map, Bell, FileWarning } from 'lucide-react-native';
 
 import AuthScreen from './src/screens/AuthScreen';
+import HomeScreen from './src/screens/HomeScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
 import MapScreen from './src/screens/MapScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
@@ -36,55 +37,64 @@ function TabIcon({
 function MainApp() {
   return (
     <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor: '#00f5ff',
-          tabBarInactiveTintColor: '#606070',
-          tabBarLabelStyle: styles.tabLabel,
-          tabBarBackground: () => (
-            <View style={StyleSheet.absoluteFill} />
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: '#00f5ff',
+        tabBarInactiveTintColor: '#606070',
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarBackground: () => (
+          <View style={StyleSheet.absoluteFill} />
+        ),
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon Icon={Home} focused={focused} color={color} />
           ),
         }}
-      >
-        <Tab.Screen
-          name="Scanner"
-          component={ScannerScreen}
-          options={{
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon Icon={Scan} focused={focused} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Map"
-          component={MapScreen}
-          options={{
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon Icon={Map} focused={focused} color={color} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Alerts"
-          component={AlertsScreen}
-          options={{
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon Icon={Bell} focused={focused} color={color} />
-            ),
-            tabBarBadge: undefined,
-          }}
-        />
-        <Tab.Screen
-          name="Report"
-          component={ReportCrimeScreen}
-          options={{
-            tabBarIcon: ({ focused, color }) => (
-              <TabIcon Icon={FileWarning} focused={focused} color={color} />
-            ),
-          }}
-        />
-      </Tab.Navigator>
+      />
+      <Tab.Screen
+        name="Scanner"
+        component={ScannerScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon Icon={Scan} focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Map"
+        component={MapScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon Icon={Map} focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Alerts"
+        component={AlertsScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon Icon={Bell} focused={focused} color={color} />
+          ),
+          tabBarBadge: undefined,
+        }}
+      />
+      <Tab.Screen
+        name="Report"
+        component={ReportCrimeScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon Icon={FileWarning} focused={focused} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
   );
 }
 
@@ -123,25 +133,31 @@ export default function App() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: 'rgba(20, 20, 25, 0.95)',
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    borderTopWidth: 1,
-    height: 80,
-    paddingBottom: 20,
-    paddingTop: 10,
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    elevation: 0,
-    borderTopWidth: 0, // Clean look
+    bottom: Platform.OS === 'ios' ? 24 : 16,
+    left: 20,
+    right: 20,
+    height: 72,
+    backgroundColor: 'rgba(24, 24, 27, 0.85)', // Glassmorphism dark zinc
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    paddingBottom: 0,
+    paddingTop: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabLabel: {
     fontSize: 10,
     fontWeight: '600',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
     marginTop: 4,
-    fontFamily: 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
   tabIconContainer: {
     alignItems: 'center',
