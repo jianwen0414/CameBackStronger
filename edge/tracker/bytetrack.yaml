@@ -1,0 +1,42 @@
+# ByteTrack Configuration for YOLO Object Tracking
+# https://github.com/ultralytics/ultralytics
+
+# Tracker type
+tracker_type: bytetrack
+
+# Track buffer - number of frames to keep lost tracks before removing
+track_buffer: 50
+
+# Track activation threshold - confidence threshold for new track activation
+track_activation_threshold: 0.25
+
+# High confidence threshold for first association
+track_high_thresh: 0.25
+
+# Low confidence threshold for second association (recovering lost tracks)
+track_low_thresh: 0.1
+
+# Minimum number of consecutive frames for track confirmation
+min_hits: 3
+new_track_thresh: 0.25
+
+# IOU threshold for matching detections to tracks
+match_thresh: 0.8
+
+# Fuse detection score with IOU distance for matching
+fuse_score: True
+
+# Maximum cosine distance for Re-ID feature matching (if using ReID)
+# proximity_thresh: 0.5
+
+# Appearance similarity weight (for ReID models)
+# appearance_thresh: 0.25
+
+# Use camera motion compensation (for moving cameras)
+with_reid: False
+
+# Minimum box area (in pixels) to consider for tracking
+# min_box_area: 10
+
+# Aspect ratio range [min, max] for valid detections
+# aspect_ratio_thresh: [0.1, 10.0]
