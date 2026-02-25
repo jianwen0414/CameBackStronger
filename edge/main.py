@@ -4,7 +4,7 @@ import threading
 import os
 from dotenv import load_dotenv
 from camera_service import CameraService
-from luggage_detector import LuggageDetector
+from weapon_detector import WeaponDetector
 import paho.mqtt.client as mqtt
 import json
 
@@ -31,7 +31,7 @@ except Exception as e:
 
 # 1. Start Camera & AI
 camera = CameraService(source=0)
-detector = LuggageDetector()
+detector = WeaponDetector()
 
 # 2. Start FFmpeg Streamer (Pipes video to MediaMTX)
 ffmpeg_cmd = [
