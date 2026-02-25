@@ -62,6 +62,8 @@ detector = Detector(
     camera_id=CAMERA_ID,
     frame_skip=FRAME_SKIP,
     imgsz=IMGSZ,
+    use_reid=True,      # ← add this
+    reid_device="cuda",  # or "cuda"
 )
 
 # 3. FFmpeg RTSP streamer

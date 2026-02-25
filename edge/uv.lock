@@ -227,6 +227,12 @@ dependencies = [
     { name = "ultralytics" },
 ]
 
+[package.optional-dependencies]
+reid = [
+    { name = "torch" },
+    { name = "torchvision" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "google-cloud-storage", specifier = ">=2.18.2" },
@@ -237,8 +243,11 @@ requires-dist = [
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sahi", specifier = ">=0.11.36" },
+    { name = "torch", marker = "extra == 'reid'", specifier = ">=2.0.0" },
+    { name = "torchvision", marker = "extra == 'reid'", specifier = ">=0.15.0" },
     { name = "ultralytics", specifier = ">=8.4.14" },
 ]
+provides-extras = ["reid"]
 
 [[package]]
 name = "filelock"

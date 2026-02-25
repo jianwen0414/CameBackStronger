@@ -1,17 +1,14 @@
 """
 edge/reidentification.py
-Person Re-Identification using OSNet (torchreid).
+Person Re-Identification using torchvision ResNet50 (fast-reid backend).
 
-Responsibilities:
-  - Extract 512-dim feature vectors from person crops (OSNet)
-  - Store per-camera, per-track feature history (rolling average)
-  - Find cross-camera matches via cosine similarity
-  - Assign stable global person IDs across cameras
-  - Provide consistent colours per global ID for visualisation
+Replaces torchreid/OSNet with a pretrained ResNet50 backbone (ImageNet weights),
+FC layer swapped for Identity so the output is a 2048-dim feature vector.
+No Cython compilation required — works with Python 3.13+.
 
 Install:
-    pip install torchreid
-    # or: pip install git+https://github.com/KaiyangZhou/deep-person-reid.git
+    uv sync --extra reid
+    # or: pip install torch torchvision
 """
 
 from __future__ import annotations
@@ -22,7 +19,8 @@ from collections import defaultdict
 
 try:
     import torch
-    import torchreid
+    import torchvision.models as tv_models
+    import torchvision.transforms as T
     REID_AVAILABLE = True
 except ImportError:
     REID_AVAILABLE = False
@@ -32,8 +30,9 @@ except ImportError:
 # Constants
 # ---------------------------------------------------------------------------
 FEATURE_HISTORY_LEN = 10   # Rolling window of feature vectors per track
-REID_INPUT_W        = 128  # OSNet expected width
-REID_INPUT_H        = 256  # OSNet expected height
+REID_INPUT_W        = 128  # Width fed into ResNet (portrait crop)
+REID_INPUT_H        = 256  # Height fed into ResNet (portrait crop)
+FEATURE_DIM         = 2048 # ResNet50 penultimate-layer output dim
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +41,9 @@ REID_INPUT_H        = 256  # OSNet expected height
 class PersonReID:
     """
     In-memory person re-identification across multiple cameras.
+
+    Backend: torchvision ResNet50 pretrained on ImageNet, FC → Identity.
+    Features are 2048-dim, L2-normalised before storage.
 
     Usage::
 
@@ -60,22 +62,28 @@ class PersonReID:
         global_id = reid.get_global_id(camera_id=1, track_id=42)
     """
 
-    def __init__(self, model_name: str = "osnet_x1_0", device: str = "cpu") -> None:
+    def __init__(self, model_name: str = "resnet50", device: str = "cpu") -> None:
         if not REID_AVAILABLE:
             raise ImportError(
-                "torchreid is not installed. "
-                "Run: pip install git+https://github.com/KaiyangZhou/deep-person-reid.git"
+                "torch and torchvision are not installed. "
+                "Run: uv sync --extra reid"
             )
 
         self.device = device
 
-        print(f"[ReID] Loading OSNet model: {model_name} on {device} ...")
-        self.feature_extractor = torchreid.utils.FeatureExtractor(
-            model_name=model_name,
-            model_path=None,
-            device=device,
-        )
-        print("[ReID] ✓ OSNet loaded.")
+        print(f"[ReID] Loading ResNet50 backbone on {device} ...")
+        backbone = tv_models.resnet50(weights=tv_models.ResNet50_Weights.IMAGENET1K_V2)
+        backbone.fc = torch.nn.Identity()   # strip classifier → 2048-dim output
+        self.model = backbone.to(device)
+        self.model.eval()
+
+        # Standard ImageNet normalisation (RGB)
+        self._transform = T.Compose([
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406],
+                        std =[0.229, 0.224, 0.225]),
+        ])
+        print(f"[ReID] ResNet50 loaded. Feature dim: {FEATURE_DIM}.")
 
         # {camera_id: {track_id: [feature_vector, ...]}}
         self.camera_features: dict[int, dict[int, list[np.ndarray]]] = (
@@ -105,30 +113,30 @@ class PersonReID:
     # ------------------------------------------------------------------
     # Feature extraction
     # ------------------------------------------------------------------
-    def _preprocess_crop(self, crop: np.ndarray) -> np.ndarray | None:
-        """Resize and convert a BGR crop to RGB (H=256, W=128)."""
+    def _preprocess_crop(self, crop: np.ndarray) -> torch.Tensor | None:
+        """Resize BGR crop → RGB → normalised tensor (1, 3, H, W)."""
         if crop is None or crop.size == 0:
             return None
         if crop.shape[0] < 10 or crop.shape[1] < 10:
-            # Too small — OSNet will produce garbage features
             return None
         rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-        return cv2.resize(rgb, (REID_INPUT_W, REID_INPUT_H))
+        rgb = cv2.resize(rgb, (REID_INPUT_W, REID_INPUT_H))
+        tensor = self._transform(rgb).unsqueeze(0)  # (1, 3, H, W)
+        return tensor.to(self.device)
 
     def extract_features(self, crop: np.ndarray) -> np.ndarray | None:
         """
-        Extract a L2-normalised 512-dim feature vector from a person crop.
+        Extract a L2-normalised 2048-dim feature vector from a person crop.
         Returns None if the crop is invalid.
         """
-        preprocessed = self._preprocess_crop(crop)
-        if preprocessed is None:
+        tensor = self._preprocess_crop(crop)
+        if tensor is None:
             return None
 
-        import torch
         with torch.no_grad():
-            feats = self.feature_extractor([preprocessed])
+            feats = self.model(tensor)          # (1, 2048)
 
-        feats = feats.cpu().numpy()[0]
+        feats = feats.cpu().numpy()[0]          # (2048,)
         norm = np.linalg.norm(feats)
         if norm == 0:
             return None
@@ -195,7 +203,7 @@ class PersonReID:
             return matches
 
         for i, cam1 in enumerate(camera_ids):
-            for cam2 in camera_ids[i + 1 :]:
+            for cam2 in camera_ids[i + 1:]:
                 for track1 in self.camera_features[cam1]:
                     feat1 = self.get_averaged_features(cam1, track1)
                     if feat1 is None:
@@ -230,34 +238,69 @@ class PersonReID:
     # ------------------------------------------------------------------
     # Global ID assignment
     # ------------------------------------------------------------------
+    def _find_gallery_match(self, camera_id: int, track_id: int, threshold: float = 0.70) -> int:
+        """
+        Compare (camera_id, track_id) features against every track that
+        already has a global ID.  Returns the best-matching global ID if
+        similarity exceeds threshold, or -1.  Enables within-camera
+        re-identification when a person re-enters with a new ByteTrack ID.
+        """
+        feat = self.get_averaged_features(camera_id, track_id)
+        if feat is None:
+            return -1
+        best_sim = threshold
+        best_gid = -1
+        for (cam, tid), gid in self.global_person_ids.items():
+            if cam == camera_id and tid == track_id:
+                continue
+            other = self.get_averaged_features(cam, tid)
+            if other is None:
+                continue
+            sim = self.cosine_similarity(feat, other)
+            if sim > best_sim:
+                best_sim = sim
+                best_gid = gid
+        return best_gid
+
     def assign_global_ids(
         self, matches: dict[tuple[int, int], dict]
     ) -> None:
         """
-        Assign a shared global ID to matched tracks and unique IDs to
-        unmatched tracks.  Call this after find_cross_camera_matches().
+        Incrementally assign stable global IDs.
+
+        - Cross-camera matched pairs share an ID, reusing any existing ID.
+        - Unmatched tracks are compared against the full gallery before
+          getting a fresh ID (enables within-camera re-identification).
         """
-        self.global_person_ids = {}
-        current_global_id = 1
         visited: set[tuple[int, int]] = set()
 
-        # Matched pairs get the same ID
+        # Cross-camera matched pairs — reuse existing ID if one side has one
         for (cam, track), info in matches.items():
             if (cam, track) in visited:
                 continue
             m_cam, m_track = info["camera"], info["track"]
-            self.global_person_ids[(cam, track)] = current_global_id
-            self.global_person_ids[(m_cam, m_track)] = current_global_id
+            gid = self.global_person_ids.get(
+                (cam, track),
+                self.global_person_ids.get((m_cam, m_track), -1),
+            )
+            if gid < 0:
+                gid = self._next_global_id
+                self._next_global_id += 1
+            self.global_person_ids[(cam, track)] = gid
+            self.global_person_ids[(m_cam, m_track)] = gid
             visited.add((cam, track))
             visited.add((m_cam, m_track))
-            current_global_id += 1
 
-        # Unmatched tracks each get their own ID
+        # Unmatched tracks: feature-match against gallery, else fresh ID
         for cam in self.camera_features:
             for track in self.camera_features[cam]:
-                if (cam, track) not in self.global_person_ids:
-                    self.global_person_ids[(cam, track)] = current_global_id
-                    current_global_id += 1
+                if (cam, track) in self.global_person_ids:
+                    continue
+                gid = self._find_gallery_match(cam, track)
+                if gid < 0:
+                    gid = self._next_global_id
+                    self._next_global_id += 1
+                self.global_person_ids[(cam, track)] = gid
 
     # ------------------------------------------------------------------
     # Accessors for visualisation
