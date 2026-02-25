@@ -1,42 +1,36 @@
-# ByteTrack Configuration for YOLO Object Tracking
+# ByteTrack configuration
+# Matching metric: bounding-box IoU overlap (NOT centre-distance).
 # https://github.com/ultralytics/ultralytics
 
-# Tracker type
 tracker_type: bytetrack
 
-# Track buffer - number of frames to keep lost tracks before removing
+# ── Confidence thresholds ───────────────────────────────────────────────────
+# Detections above track_high_thresh go through the primary IoU pass.
+# Detections between track_low_thresh and track_high_thresh are used in the
+# secondary pass to recover briefly-lost tracks (helps with occluded knives).
+track_high_thresh:          0.25
+track_low_thresh:           0.10
+track_activation_threshold: 0.25
+new_track_thresh:           0.25
+
+# ── IoU matching ────────────────────────────────────────────────────────────
+# match_thresh: minimum IoU overlap to link a detection to an existing track.
+# 0.5 is low enough for small, fast-moving weapons without causing false links.
+match_thresh: 0.5
+
+# fuse_score: when True, multiplies IoU by detection confidence before
+# matching. Disabled here so matching is based purely on spatial overlap.
+fuse_score: False
+
+# ── Track lifecycle ─────────────────────────────────────────────────────────
+# min_hits: consecutive frames before a track is confirmed.
+# 1 = knives register immediately; false positives are handled upstream
+# by the ownership state machine (confirm_frames=5 before any alert fires).
+min_hits:     1
+
+# track_buffer: frames a lost track is kept before deletion.
+# Larger values help re-link weapons after brief occlusion.
 track_buffer: 50
 
-# Track activation threshold - confidence threshold for new track activation
-track_activation_threshold: 0.25
-
-# High confidence threshold for first association
-track_high_thresh: 0.25
-
-# Low confidence threshold for second association (recovering lost tracks)
-track_low_thresh: 0.1
-
-# Minimum number of consecutive frames for track confirmation
-min_hits: 3
-new_track_thresh: 0.25
-
-# IOU threshold for matching detections to tracks
-match_thresh: 0.8
-
-# Fuse detection score with IOU distance for matching
-fuse_score: True
-
-# Maximum cosine distance for Re-ID feature matching (if using ReID)
-# proximity_thresh: 0.5
-
-# Appearance similarity weight (for ReID models)
-# appearance_thresh: 0.25
-
-# Use camera motion compensation (for moving cameras)
+# Camera motion compensation — set True only for PTZ / moving cameras.
 with_reid: False
-
-# Minimum box area (in pixels) to consider for tracking
-# min_box_area: 10
-
-# Aspect ratio range [min, max] for valid detections
-# aspect_ratio_thresh: [0.1, 10.0]
