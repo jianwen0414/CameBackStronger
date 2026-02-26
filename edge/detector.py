@@ -30,6 +30,7 @@ from enum import Enum, auto
 
 from tracker.tracker import _iou
 from reidentification import PersonReID, REID_AVAILABLE
+from vector_store import SupabaseVectorStore
 
 load_dotenv()
 
@@ -160,6 +161,17 @@ class Detector:
             if use_reid:
                 print("⚠️  PersonReID not available (run: uv sync --extra reid)")
 
+        # ── Supabase vector store ─────────────────────────────────────────────
+        self.vector_store: SupabaseVectorStore | None = None
+        _sb_url = os.getenv("SUPABASE_URL")
+        _sb_key = os.getenv("SUPABASE_SERVICE_KEY")
+        if _sb_url and _sb_key:
+            try:
+                self.vector_store = SupabaseVectorStore(_sb_url, _sb_key)
+                print(">>> Supabase vector store enabled")
+            except Exception as e:
+                print(f"⚠️  Supabase vector store init failed: {e}")
+
         # ── Event log ────────────────────────────────────────────────────────
         self.event_log    = []
         self.total_alerts = 0
@@ -245,6 +257,7 @@ class Detector:
             conf=_min_conf,
             imgsz=self.imgsz,
             verbose=False,
+            task="detect"
         )
 
         # ── 2. Parse tracks (per-class confidence filter) ─────────────────────
@@ -285,9 +298,22 @@ class Detector:
             for pid in persons:
                 if self.reid_model.get_global_id(self.camera_id, pid) >= 0:
                     continue  # already identified
-                gid = self.reid_model._find_gallery_match(self.camera_id, pid)
+                gid = self.reid_model._find_gallery_match(
+                    self.camera_id, pid,
+                    active_track_ids=set(persons.keys()),
+                )
                 if gid >= 0:
                     self.reid_model.global_person_ids[(self.camera_id, pid)] = gid
+                    continue
+                # Not in local gallery — query Supabase in background
+                if self.vector_store is not None:
+                    avg_feats = self.reid_model.get_averaged_features(self.camera_id, pid)
+                    if avg_feats is not None:
+                        def _remote_match(pid=pid, feats=avg_feats):
+                            remote_gid = self.vector_store.find_similar(feats)
+                            if remote_gid is not None:
+                                self.reid_model.global_person_ids[(self.camera_id, pid)] = remote_gid
+                        threading.Thread(target=_remote_match, daemon=True).start()
 
         # ── 4. Prune lost weapons ─────────────────────────────────────────────
         for wid in [w for w in self._weapon_states if w not in weapons]:
@@ -326,15 +352,46 @@ class Detector:
                         state.candidate_track_id = None
                         if self.reid_model is not None:
                             gid = self.reid_model.get_global_id(self.camera_id, nearest_pid)
+
+                            if gid < 0 and self.vector_store is not None:
+                                # Try persistent store (cross-node / cross-restart)
+                                avg_feats = self.reid_model.get_averaged_features(
+                                    self.camera_id, nearest_pid
+                                )
+                                if avg_feats is not None:
+                                    gid = self.vector_store.find_similar(avg_feats) or -1
+
                             if gid < 0:
-                                # First time this person is confirmed as a weapon
-                                # holder — mint a fresh global ID for them.
-                                gid = self.reid_model._next_global_id
-                                self.reid_model._next_global_id += 1
-                                self.reid_model.global_person_ids[
-                                    (self.camera_id, nearest_pid)
-                                ] = gid
+                                # New person — mint globally unique ID
+                                if self.vector_store is not None:
+                                    try:
+                                        gid = self.vector_store.next_person_id()
+                                    except Exception:
+                                        gid = self.reid_model._next_global_id
+                                        self.reid_model._next_global_id += 1
+                                else:
+                                    gid = self.reid_model._next_global_id
+                                    self.reid_model._next_global_id += 1
+
+                            # Assign to local gallery
+                            self.reid_model.global_person_ids[
+                                (self.camera_id, nearest_pid)
+                            ] = gid
                             state.owner_global_id = gid
+
+                            # Persist embedding (background thread, fire-and-forget)
+                            if self.vector_store is not None:
+                                avg_feats = self.reid_model.get_averaged_features(
+                                    self.camera_id, nearest_pid
+                                )
+                                if avg_feats is not None:
+                                    wlabel = WEAPON_LABELS.get(winfo["cls"], "Weapon")
+                                    threading.Thread(
+                                        target=self.vector_store.store_embedding,
+                                        args=(gid, self.camera_id, avg_feats,
+                                              wlabel, winfo["conf"]),
+                                        daemon=True,
+                                    ).start()
                 else:
                     state.candidate_track_id = None
                     state.confirm_frames = 0
