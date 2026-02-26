@@ -238,20 +238,43 @@ class PersonReID:
     # ------------------------------------------------------------------
     # Global ID assignment
     # ------------------------------------------------------------------
-    def _find_gallery_match(self, camera_id: int, track_id: int, threshold: float = 0.70) -> int:
+    def _find_gallery_match(
+        self,
+        camera_id: int,
+        track_id: int,
+        threshold: float = 0.70,
+        min_history: int = 3,
+        active_track_ids: set[int] | None = None,
+    ) -> int:
         """
         Compare (camera_id, track_id) features against every track that
         already has a global ID.  Returns the best-matching global ID if
-        similarity exceeds threshold, or -1.  Enables within-camera
-        re-identification when a person re-enters with a new ByteTrack ID.
+        similarity exceeds threshold, or -1.
+
+        Args:
+            min_history: minimum number of feature vectors required before
+                attempting a match — prevents noisy single-frame false positives.
+            active_track_ids: track IDs currently visible on camera_id.  Any
+                gallery entry whose track is still active (and is not the query
+                track itself) is skipped — a global ID already held by a person
+                in the current frame cannot be re-assigned to a different person.
         """
+        history = self.camera_features.get(camera_id, {}).get(track_id)
+        if not history or len(history) < min_history:
+            return -1
+
         feat = self.get_averaged_features(camera_id, track_id)
         if feat is None:
             return -1
+
         best_sim = threshold
         best_gid = -1
         for (cam, tid), gid in self.global_person_ids.items():
             if cam == camera_id and tid == track_id:
+                continue
+            # Skip gallery entries whose owner is still visible in this frame
+            # — their global ID is not available to be claimed by someone else.
+            if cam == camera_id and active_track_ids and tid in active_track_ids:
                 continue
             other = self.get_averaged_features(cam, tid)
             if other is None:
