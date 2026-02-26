@@ -493,7 +493,7 @@ class Detector:
                     cv2.rectangle(annotated, (wx1, wy1), (wx2, wy2), self._C_WEAPON, 3)
                     cv2.line(annotated, (int(wcx), int(wcy)), (int(pcx), int(pcy)),
                              self._C_OWNED, 2)
-                    self._put_label(annotated, f"⚠ {wlabel}{gid_tag}",
+                    self._put_label(annotated, f"!! {wlabel}{gid_tag}",
                                     (wx1, wy1), self._C_WEAPON)
 
             elif state.status == WeaponOwnership.LOCKED_ORPHAN:
