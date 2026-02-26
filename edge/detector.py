@@ -37,9 +37,10 @@ load_dotenv()
 # ── MQTT ──────────────────────────────────────────────────────────────────────
 MQTT_BROKER_HOST  = os.getenv("MQTT_BROKER_HOST",  "127.0.0.1")
 MQTT_BROKER_PORT  = int(os.getenv("MQTT_BROKER_PORT", 1883))
-MQTT_TOPIC_STATUS = os.getenv("MQTT_TOPIC_STATUS", "cam-01/status")
-MQTT_TOPIC_ALERT  = os.getenv("MQTT_TOPIC_ALERT",  "cam-01/alert")
-MQTT_TOPIC_ACK    = os.getenv("MQTT_TOPIC_ACK",    "cam-01/ack")
+MQTT_TOPIC_STATUS    = os.getenv("MQTT_TOPIC_STATUS",    "cam-01/status")
+MQTT_TOPIC_ALERT     = os.getenv("MQTT_TOPIC_ALERT",     "cam-01/alert")
+MQTT_TOPIC_ACK       = os.getenv("MQTT_TOPIC_ACK",       "cam-01/ack")
+MQTT_TOPIC_ANALYTICS = os.getenv("MQTT_TOPIC_ANALYTICS", "cam-01/analytics")
 
 APP_ENV         = os.getenv("APP_ENV", "dev")
 GCP_BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "evidence-clips")
@@ -173,8 +174,9 @@ class Detector:
                 print(f"⚠️  Supabase vector store init failed: {e}")
 
         # ── Event log ────────────────────────────────────────────────────────
-        self.event_log    = []
-        self.total_alerts = 0
+        self.event_log           = []
+        self.total_alerts        = 0
+        self.current_person_count = 0
         self.acknowledged_detections: dict[int, float] = {}
 
         # ── MQTT ─────────────────────────────────────────────────────────────
@@ -183,12 +185,26 @@ class Detector:
         self.mqtt_connected  = False
         self.client.on_message = self.on_mqtt_message
 
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                self.mqtt_connected = True
+                client.subscribe(MQTT_TOPIC_ACK)
+                print(f">>> MQTT Connected (rc={rc})")
+            else:
+                self.mqtt_connected = False
+                print(f"⚠️  MQTT Connect failed (rc={rc})")
+
+        def on_disconnect(client, userdata, rc):
+            self.mqtt_connected = False
+            print(f"⚠️  MQTT Disconnected (rc={rc}), will auto-reconnect...")
+
+        self.client.on_connect    = on_connect
+        self.client.on_disconnect = on_disconnect
+
         try:
             self.client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT)
-            self.client.subscribe(MQTT_TOPIC_ACK)
             self.client.loop_start()
-            self.mqtt_connected = True
-            print(">>> MQTT Connected")
+            print(">>> MQTT Connecting...")
         except Exception as e:
             print(f"⚠️  MQTT Connection Failed: {e}")
 
@@ -281,6 +297,9 @@ class Detector:
                 elif cls in WEAPON_CLASSES:
                     entry["cls"] = cls
                     weapons[tid] = entry
+
+        # Track live person count for MQTT analytics
+        self.current_person_count = len(persons)
 
         # ── 3. ReID ───────────────────────────────────────────────────────────
         if self.reid_model is not None and self.frame_counter % self.reid_every_n_frames == 0:
@@ -518,14 +537,25 @@ class Detector:
         if self.mqtt_connected and self.frame_counter % 10 == 0:
             try:
                 self.client.publish(MQTT_TOPIC_STATUS, json.dumps(self.get_stats()))
+                topic_prefix = MQTT_TOPIC_STATUS.rsplit("/", 1)[0]
+                analytics_payload = {
+                    "camera_id":     self.camera_id,
+                    "topic_prefix":  topic_prefix,
+                    "person_count":  self.current_person_count,
+                    "alert_count":   self.total_alerts,
+                    "active_threats": len(threats),
+                    "timestamp":     datetime.now().isoformat(),
+                }
+                self.client.publish(MQTT_TOPIC_ANALYTICS, json.dumps(analytics_payload))
                 if frame_has_active_threat and not self.is_alarm_active:
                     self.client.publish(MQTT_TOPIC_ALERT, "ON")
                     self.is_alarm_active = True
                 elif not frame_has_active_threat and self.is_alarm_active:
                     self.client.publish(MQTT_TOPIC_ALERT, "OFF")
                     self.is_alarm_active = False
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️  MQTT publish error: {e}")
+                self.mqtt_connected = False  # trigger reconnect on next loop
 
         self.frame_buffer.append(annotated)
         self.handle_recording(annotated, frame_has_active_threat)

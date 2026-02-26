@@ -22,10 +22,12 @@ import { useAlertStore } from '../store/useAlertStore';
 import type {
     ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType,
 } from '../lib/supabase';
+import LiveAnalyticsOverlay from './LiveAnalyticsOverlay';
 
-// Placeholder CCTV stream when no stream_url is available
-const SAMPLE_CCTV_STREAM =
-    'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4';
+// Default CCTV stream — MediaMTX WebRTC player page (port 8889), embedded as an iframe.
+// Override per-camera via the stream_url field in the cctv_cameras table.
+const DEFAULT_STREAM_URL =
+    import.meta.env.VITE_DEFAULT_STREAM_URL || 'http://localhost:8889/mystream/';
 
 // ============================================================================
 // Style config per beacon type
@@ -105,6 +107,7 @@ function getBeaconIcon(type: BeaconType) {
 // ============================================================================
 // CCTV Stream View — fullscreen live feed overlay
 // Accessible from blue (directly) and red/yellow (via "Real-time CCTV" button)
+// Uses an iframe to embed the MediaMTX built-in WebRTC player page.
 // ============================================================================
 
 function CCTVStreamView({ camera, sourceLabel, onClose }: {
@@ -112,8 +115,7 @@ function CCTVStreamView({ camera, sourceLabel, onClose }: {
     sourceLabel?: string;
     onClose: () => void;
 }) {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const streamUrl = camera?.stream_url || SAMPLE_CCTV_STREAM;
+    const streamUrl = camera?.stream_url || DEFAULT_STREAM_URL;
     const cameraName = camera?.camera_name || 'Nearest CCTV';
     const locationName = camera?.location_name || sourceLabel || '';
 
@@ -150,9 +152,15 @@ function CCTVStreamView({ camera, sourceLabel, onClose }: {
                 </div>
             </div>
 
-            {/* Video */}
-            <div className="flex-1 relative">
-                <video ref={videoRef} src={streamUrl} autoPlay loop muted className="w-full h-full object-contain" />
+            {/* iframe WebRTC stream + Analytics Overlay */}
+            <div className="flex-1 relative bg-black">
+                <iframe
+                    src={streamUrl}
+                    className="w-full h-full border-0"
+                    allow="autoplay; camera; microphone"
+                    title={`${cameraName} Live Feed`}
+                />
+                <LiveAnalyticsOverlay cameraName={cameraName} />
             </div>
         </motion.div>
     );
