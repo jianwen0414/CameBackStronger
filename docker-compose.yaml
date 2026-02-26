@@ -1,0 +1,29 @@
+services:
+
+  # ── MQTT Broker (Mosquitto) ──────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto_broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT TCP
+      - "9001:9001"   # MQTT WebSocket (used by the web frontend)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  # ── MediaMTX (RTSP / HLS / WebRTC streaming server) ─────────────────────────
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    container_name: mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554"         # RTSP  (edge pushes stream here)
+      - "8554:8554/udp"     # RTSP  UDP
+      - "8888:8888"         # HLS
+      - "8889:8889"         # WebRTC / HTTP (web frontend reads stream here)
+      - "8890:8890/udp"     # WebRTC UDP
+      - "1935:1935"         # RTMP  (optional ingest)
+    environment:
+      - MTX_PROTOCOLS=tcp
