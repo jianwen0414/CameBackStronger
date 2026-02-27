@@ -28,6 +28,18 @@ import threading
 from google.cloud import storage
 from enum import Enum, auto
 
+
+class _NumpyEncoder(json.JSONEncoder):
+    """Handle numpy int/float types that stdlib json cannot serialize."""
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
 from tracker.tracker import _iou
 from reidentification import PersonReID, REID_AVAILABLE
 from vector_store import SupabaseVectorStore
@@ -81,6 +93,12 @@ class WeaponState:
         self.candidate_track_id: int | None = None
         self.confirm_frames:  int        = 0
         self.orphan_frames:   int        = 0
+        # Grace counter: consecutive processed frames with no person overlap.
+        # Allows brief IoU gaps without resetting confirm_frames.
+        self.no_overlap_frames: int      = 0
+        # Grace counter: consecutive processed frames the weapon itself was
+        # not detected.  Prevents a single YOLO miss from pruning state.
+        self.missed_frames:   int        = 0
 
 
 # ── Detector ───────────────────────────────────────────────────────────────────
@@ -335,7 +353,25 @@ class Detector:
                         threading.Thread(target=_remote_match, daemon=True).start()
 
         # ── 4. Prune lost weapons ─────────────────────────────────────────────
-        for wid in [w for w in self._weapon_states if w not in weapons]:
+        # UNOWNED states get a short grace period (5 processed frames) so a
+        # brief YOLO miss doesn't reset confirm_frames back to zero.
+        # OWNED / LOCKED_ORPHAN states are pruned immediately when the weapon
+        # leaves detection entirely (the LOCKED_ORPHAN timer handles the normal
+        # "owner left frame" case while weapon is still visible).
+        _UNOWNED_GRACE = 5
+        to_prune = []
+        for wid, state in self._weapon_states.items():
+            if wid not in weapons:
+                state.missed_frames += 1
+                if state.status != WeaponOwnership.UNOWNED or state.missed_frames > _UNOWNED_GRACE:
+                    to_prune.append(wid)
+            else:
+                state.missed_frames = 0
+        for wid in to_prune:
+            # Clear active log entries so a subsequent pick-up triggers a new alert
+            for event in self.event_log:
+                if event.get("weapon_track") == wid:
+                    event["active"] = False
             del self._weapon_states[wid]
 
         # ── 5. Ownership state machine ────────────────────────────────────────
@@ -358,11 +394,11 @@ class Detector:
 
             if state.status == WeaponOwnership.UNOWNED:
                 if nearest_pid is not None:
-                    if state.candidate_track_id == nearest_pid:
-                        state.confirm_frames += 1
-                    else:
-                        state.candidate_track_id = nearest_pid
-                        state.confirm_frames = 1
+                    state.no_overlap_frames = 0
+                    # Count ANY person overlapping — don't reset on track ID
+                    # change (ByteTrack frequently reassigns IDs with frame_skip).
+                    state.confirm_frames += 1
+                    state.candidate_track_id = nearest_pid
 
                     if state.confirm_frames >= self.confirm_frames_needed:
                         state.status         = WeaponOwnership.OWNED
@@ -412,8 +448,13 @@ class Detector:
                                         daemon=True,
                                     ).start()
                 else:
-                    state.candidate_track_id = None
-                    state.confirm_frames = 0
+                    # No person overlaps this frame — allow a brief grace window
+                    # (equal to confirm_frames_needed) before resetting progress.
+                    state.no_overlap_frames += 1
+                    if state.no_overlap_frames > self.confirm_frames_needed:
+                        state.candidate_track_id = None
+                        state.confirm_frames = 0
+                        state.no_overlap_frames = 0
 
             elif state.status == WeaponOwnership.OWNED:
                 owner_in_frame = state.owner_track_id in persons
@@ -536,17 +577,19 @@ class Detector:
 
         if self.mqtt_connected and self.frame_counter % 10 == 0:
             try:
-                self.client.publish(MQTT_TOPIC_STATUS, json.dumps(self.get_stats()))
+                self.client.publish(MQTT_TOPIC_STATUS, json.dumps(self.get_stats(), cls=_NumpyEncoder))
                 topic_prefix = MQTT_TOPIC_STATUS.rsplit("/", 1)[0]
                 analytics_payload = {
-                    "camera_id":     self.camera_id,
+                    "camera_id":     int(self.camera_id),
                     "topic_prefix":  topic_prefix,
-                    "person_count":  self.current_person_count,
-                    "alert_count":   self.total_alerts,
-                    "active_threats": len(threats),
+                    "person_count":  int(self.current_person_count),
+                    "alert_count":   int(self.total_alerts),
+                    "active_threats": int(len(threats)),
+                    "gun_count":     int(sum(1 for w in weapons.values() if w["cls"] == CLS_GUN)),
+                    "knife_count":   int(sum(1 for w in weapons.values() if w["cls"] == CLS_KNIFE)),
                     "timestamp":     datetime.now().isoformat(),
                 }
-                self.client.publish(MQTT_TOPIC_ANALYTICS, json.dumps(analytics_payload))
+                self.client.publish(MQTT_TOPIC_ANALYTICS, json.dumps(analytics_payload, cls=_NumpyEncoder))
                 if frame_has_active_threat and not self.is_alarm_active:
                     self.client.publish(MQTT_TOPIC_ALERT, "ON")
                     self.is_alarm_active = True
@@ -565,9 +608,9 @@ class Detector:
     # ── Stats ──────────────────────────────────────────────────────────────────
     def get_stats(self) -> dict:
         return {
-            "total_alerts":   self.total_alerts,
+            "total_alerts":   int(self.total_alerts),
             "logs":           self.event_log,
-            "active_threats": len(self.last_threats),
+            "active_threats": int(len(self.last_threats)),
         }
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -695,6 +738,6 @@ class Detector:
 
         if self.mqtt_connected:
             try:
-                self.client.publish(MQTT_TOPIC_STATUS, json.dumps(self.get_stats()))
+                self.client.publish(MQTT_TOPIC_STATUS, json.dumps(self.get_stats(), cls=_NumpyEncoder))
             except Exception:
                 pass

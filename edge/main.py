@@ -8,13 +8,14 @@ from detector import Detector
 load_dotenv()
 
 # --- CONFIG ---
-CAMERA_ID  = int(os.getenv("CAMERA_ID", -1))
-CAP_WIDTH  = int(os.getenv("CAP_WIDTH",  640))
-CAP_HEIGHT = int(os.getenv("CAP_HEIGHT", 480))
-CAP_FPS    = int(os.getenv("CAP_FPS",    30))
-FRAME_SKIP = int(os.getenv("FRAME_SKIP", 2))
-IMGSZ      = int(os.getenv("IMGSZ",      416))
-RTSP_URL   = os.getenv("RTSP_URL", "rtsp://localhost:8554/mystream")
+CAMERA_ID    = int(os.getenv("CAMERA_ID", -1))
+CAP_WIDTH    = int(os.getenv("CAP_WIDTH",  640))
+CAP_HEIGHT   = int(os.getenv("CAP_HEIGHT", 480))
+CAP_FPS      = int(os.getenv("CAP_FPS",    30))
+FRAME_SKIP   = int(os.getenv("FRAME_SKIP", 2))
+IMGSZ        = int(os.getenv("IMGSZ",      416))
+RTSP_URL     = os.getenv("RTSP_URL",     "rtsp://localhost:8554/mystream")
+RTSP_URL_RAW = os.getenv("RTSP_URL_RAW", "rtsp://localhost:8554/mystream-raw")
 
 
 class ThreadedCapture:
@@ -66,20 +67,28 @@ detector = Detector(
     reid_device="cuda",  # or "cuda"
 )
 
-# 3. FFmpeg RTSP streamer
-ffmpeg_cmd = [
-    'ffmpeg', '-y',
-    '-f', 'rawvideo', '-vcodec', 'rawvideo',
-    '-pix_fmt', 'bgr24',
-    '-s', f'{CAP_WIDTH}x{CAP_HEIGHT}',
-    '-r', str(CAP_FPS),
-    '-i', '-',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-    '-f', 'rtsp', RTSP_URL,
-]
-ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+# 3. FFmpeg RTSP streamers
+def _make_ffmpeg_cmd(rtsp_url: str) -> list[str]:
+    return [
+        'ffmpeg', '-y',
+        '-f', 'rawvideo', '-vcodec', 'rawvideo',
+        '-pix_fmt', 'bgr24',
+        '-s', f'{CAP_WIDTH}x{CAP_HEIGHT}',
+        '-r', str(CAP_FPS),
+        '-i', '-',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+        '-f', 'rtsp', rtsp_url,
+    ]
 
-print(f">>> Edge AI Started. Streaming {CAP_WIDTH}x{CAP_HEIGHT} @ {CAP_FPS}fps → {RTSP_URL}")
+ffmpeg_cmd     = _make_ffmpeg_cmd(RTSP_URL)
+ffmpeg_cmd_raw = _make_ffmpeg_cmd(RTSP_URL_RAW)
+
+ffmpeg_process     = subprocess.Popen(ffmpeg_cmd,     stdin=subprocess.PIPE)
+ffmpeg_process_raw = subprocess.Popen(ffmpeg_cmd_raw, stdin=subprocess.PIPE)
+
+print(f">>> Edge AI Started. Streaming {CAP_WIDTH}x{CAP_HEIGHT} @ {CAP_FPS}fps")
+print(f"    Annotated → {RTSP_URL}")
+print(f"    Raw       → {RTSP_URL_RAW}")
 
 try:
     while True:
@@ -98,6 +107,13 @@ try:
             print("⚠️  FFmpeg pipe broken — restarting FFmpeg...")
             ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
+        # D. Stream raw (no bounding box) video on the secondary RTSP path
+        try:
+            ffmpeg_process_raw.stdin.write(frame.tobytes())
+        except BrokenPipeError:
+            print("⚠️  FFmpeg raw pipe broken — restarting raw FFmpeg...")
+            ffmpeg_process_raw = subprocess.Popen(ffmpeg_cmd_raw, stdin=subprocess.PIPE)
+
 except KeyboardInterrupt:
     print("\n>>> Shutting down...")
 
@@ -105,4 +121,6 @@ finally:
     camera.release()
     ffmpeg_process.stdin.close()
     ffmpeg_process.wait()
+    ffmpeg_process_raw.stdin.close()
+    ffmpeg_process_raw.wait()
     print(">>> Stopped.")
