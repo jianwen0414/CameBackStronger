@@ -18,6 +18,8 @@ export interface CameraAnalytics {
     person_count: number;
     alert_count: number;
     active_threats: number;
+    gun_count: number;
+    knife_count: number;
     timestamp: string;
     last_updated: number;    // Date.now() when received
 }

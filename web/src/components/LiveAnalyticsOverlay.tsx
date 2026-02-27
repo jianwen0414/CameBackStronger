@@ -4,7 +4,7 @@
  * Receives data from the MQTT broker via useMqttStore.
  */
 import { useEffect } from 'react';
-import { Users, ShieldAlert, Activity, Wifi, WifiOff } from 'lucide-react';
+import { Users, ShieldAlert, Activity, Wifi, WifiOff, Crosshair, Sword } from 'lucide-react';
 import { useMqttStore, type CameraAnalytics } from '../store/useMqttStore';
 
 interface LiveAnalyticsOverlayProps {
@@ -65,6 +65,44 @@ export default function LiveAnalyticsOverlay({ cameraName }: LiveAnalyticsOverla
                         <div>
                             <div className="text-[10px] text-gray-500 font-mono uppercase leading-none">Persons</div>
                             <div className="text-lg font-bold text-white leading-tight">{data.person_count}</div>
+                        </div>
+                    </div>
+
+                    {/* Gun count */}
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-sm border
+                        ${(data.gun_count ?? 0) > 0
+                            ? 'bg-red-500/20 border-red-500/40'
+                            : 'bg-black/70 border-white/10'}`}
+                    >
+                        <div className={`flex items-center justify-center w-7 h-7 rounded-lg
+                            ${(data.gun_count ?? 0) > 0 ? 'bg-red-500/20' : 'bg-gray-500/10'}`}
+                        >
+                            <Crosshair className={`w-4 h-4 ${(data.gun_count ?? 0) > 0 ? 'text-red-400 animate-pulse' : 'text-gray-500'}`} />
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-gray-500 font-mono uppercase leading-none">Guns</div>
+                            <div className={`text-lg font-bold leading-tight ${(data.gun_count ?? 0) > 0 ? 'text-red-400' : 'text-white'}`}>
+                                {data.gun_count ?? 0}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Knife count */}
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-sm border
+                        ${(data.knife_count ?? 0) > 0
+                            ? 'bg-orange-500/20 border-orange-500/40'
+                            : 'bg-black/70 border-white/10'}`}
+                    >
+                        <div className={`flex items-center justify-center w-7 h-7 rounded-lg
+                            ${(data.knife_count ?? 0) > 0 ? 'bg-orange-500/20' : 'bg-gray-500/10'}`}
+                        >
+                            <Sword className={`w-4 h-4 ${(data.knife_count ?? 0) > 0 ? 'text-orange-400 animate-pulse' : 'text-gray-500'}`} />
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-gray-500 font-mono uppercase leading-none">Knives</div>
+                            <div className={`text-lg font-bold leading-tight ${(data.knife_count ?? 0) > 0 ? 'text-orange-400' : 'text-white'}`}>
+                                {data.knife_count ?? 0}
+                            </div>
                         </div>
                     </div>
 
