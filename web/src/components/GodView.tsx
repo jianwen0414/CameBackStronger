@@ -11,7 +11,7 @@
  *   Blue   - CCTV camera (normal activity, click for live stream)
  *   Purple - User-reported crime (with classification + AI analysis)
  */
-import { useEffect, useMemo, useCallback, useState } from 'react';
+import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Tile3DLayer } from '@deck.gl/geo-layers';
 import type { MapViewState } from '@deck.gl/core';
@@ -205,6 +205,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
 
     const [viewState, setViewState] = useState<MapViewState>(RESIDENTIAL_VIEW_STATE);
     const [currentLayer, setCurrentLayer] = useState<ViewLayer>(2);
+    const terrainAltRef = useRef(50); // Approximate terrain elevation for Ipoh, Malaysia area
 
     useEffect(() => {
         fetchAlerts();
@@ -270,7 +271,13 @@ export default function GodView({ onAlertClick }: GodViewProps) {
             onTilesetLoad: (tileset: any) => {
                 const { cartographicCenter } = tileset;
                 if (cartographicCenter) {
-                    console.log('Tileset loaded at:', cartographicCenter);
+                    const alt = cartographicCenter[2];
+                    // Only use tileset altitude if it's a reasonable terrain value (0-500m)
+                    // Google global 3D Tiles root returns Earth-center altitude (~-6M), which is unusable
+                    if (alt > 0 && alt < 500) {
+                        terrainAltRef.current = alt;
+                    }
+                    console.log('Tileset loaded at:', cartographicCenter, 'terrain alt used:', terrainAltRef.current);
                 }
             }
         })
@@ -295,7 +302,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
 
                             {/* ===== City Overview: Residential Area Representative Beacons ===== */}
                             {currentLayer === 1 && areaStatuses.map(area => {
-                                const [x, y] = viewport.project([area.longitude, area.latitude]);
+                                const [x, y] = viewport.project([area.longitude, area.latitude, terrainAltRef.current]);
                                 const color = area.hasThreat ? '#ff0040' : '#00ff88';
                                 return (
                                     <div
@@ -327,7 +334,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                             {currentLayer === 2 && beaconFilters.red && immediateDangers
                                 .filter(d => d.lat && d.long)
                                 .map(danger => {
-                                    const [x, y] = viewport.project([danger.long!, danger.lat!]);
+                                    const [x, y] = viewport.project([danger.long!, danger.lat!, terrainAltRef.current]);
                                     return (
                                         <div key={danger.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
                                             <DangerBeacon
@@ -343,7 +350,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                             {currentLayer === 2 && beaconFilters.yellow && suspiciousLogs
                                 .filter(s => s.lat && s.long)
                                 .map(suspicious => {
-                                    const [x, y] = viewport.project([suspicious.long!, suspicious.lat!]);
+                                    const [x, y] = viewport.project([suspicious.long!, suspicious.lat!, terrainAltRef.current]);
                                     return (
                                         <div key={suspicious.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
                                             <SuspiciousBeacon
@@ -358,7 +365,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                             {currentLayer === 2 && beaconFilters.blue && cctvCameras
                                 .filter(c => c.lat && c.long)
                                 .map(camera => {
-                                    const [x, y] = viewport.project([camera.long, camera.lat]);
+                                    const [x, y] = viewport.project([camera.long, camera.lat, terrainAltRef.current]);
                                     return (
                                         <div key={camera.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
                                             <CCTVBeacon
@@ -373,7 +380,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                             {currentLayer === 2 && beaconFilters.purple && userReportedCrimes
                                 .filter(r => r.lat && r.long)
                                 .map(report => {
-                                    const [x, y] = viewport.project([report.long, report.lat]);
+                                    const [x, y] = viewport.project([report.long, report.lat, terrainAltRef.current]);
                                     return (
                                         <div key={report.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
                                             <ReportBeacon
