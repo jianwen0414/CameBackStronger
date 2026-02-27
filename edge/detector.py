@@ -40,9 +40,12 @@ class _NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return super().default(obj)
 
+import requests
+
 from tracker.tracker import _iou
 from reidentification import PersonReID, REID_AVAILABLE
 from vector_store import SupabaseVectorStore
+from homography import CoordinateTranslator
 
 load_dotenv()
 
@@ -56,6 +59,7 @@ MQTT_TOPIC_ANALYTICS = os.getenv("MQTT_TOPIC_ANALYTICS", "cam-01/analytics")
 
 APP_ENV         = os.getenv("APP_ENV", "dev")
 GCP_BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "evidence-clips")
+BACKEND_URL     = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # ── Model class indices ────────────────────────────────────────────────────────
 CLS_GUN    = 0
@@ -251,6 +255,18 @@ class Detector:
             except Exception as e:
                 print(f"❌ GCP Init Failed: {e}")
 
+        # ── Coordinate translator ────────────────────────────────────────
+        self.translator = CoordinateTranslator()
+        if self.translator.has_homography:
+            print(">>> Coordinate translator: homography mode")
+        elif self.translator.camera_lat != 0 or self.translator.camera_long != 0:
+            print(f">>> Coordinate translator: fixed ({self.translator.camera_lat}, {self.translator.camera_long})")
+        else:
+            print("⚠️  No CAMERA_LAT/CAMERA_LONG set — alerts will have (0,0) coords")
+
+        # Track which weapon alerts have already been POSTed to backend
+        self._posted_alerts: set[int] = set()
+
         # Frame-skip cache
         self.last_annotated_frame = None
         self.last_threats: list   = []
@@ -322,16 +338,18 @@ class Detector:
         # ── 3. ReID ───────────────────────────────────────────────────────────
         if self.reid_model is not None and self.frame_counter % self.reid_every_n_frames == 0:
             # Extract features for ALL persons — builds the appearance gallery
-            # so re-entrants can be matched even when not holding a weapon.
+            # so returning weapon holders can be recognised at OWNED transition.
             for pid, pinfo in persons.items():
                 x1, y1, x2, y2 = pinfo["bbox"]
                 feats = self.reid_model.extract_features(frame[y1:y2, x1:x2])
                 self.reid_model.update_features(self.camera_id, pid, feats)
 
-            # Re-identify returning persons: for each person who has no global
-            # ID yet, check if their appearance matches a weapon-holder in the
-            # gallery.  Global IDs only exist for confirmed weapon holders, so
-            # _find_gallery_match will never match an innocent bystander.
+            # Re-identify returning weapon holders: if a person who was
+            # previously confirmed holding a weapon re-enters the frame
+            # (or gets a new track ID from ByteTrack), match them against
+            # the weapon-holder gallery so their GID persists.
+            # _find_gallery_match only searches _weapon_holder_keys, so
+            # innocent bystanders cannot snowball into the same GID.
             for pid in persons:
                 if self.reid_model.get_global_id(self.camera_id, pid) >= 0:
                     continue  # already identified
@@ -341,16 +359,6 @@ class Detector:
                 )
                 if gid >= 0:
                     self.reid_model.global_person_ids[(self.camera_id, pid)] = gid
-                    continue
-                # Not in local gallery — query Supabase in background
-                if self.vector_store is not None:
-                    avg_feats = self.reid_model.get_averaged_features(self.camera_id, pid)
-                    if avg_feats is not None:
-                        def _remote_match(pid=pid, feats=avg_feats):
-                            remote_gid = self.vector_store.find_similar(feats)
-                            if remote_gid is not None:
-                                self.reid_model.global_person_ids[(self.camera_id, pid)] = remote_gid
-                        threading.Thread(target=_remote_match, daemon=True).start()
 
         # ── 4. Prune lost weapons ─────────────────────────────────────────────
         # UNOWNED states get a short grace period (5 processed frames) so a
@@ -373,6 +381,7 @@ class Detector:
                 if event.get("weapon_track") == wid:
                     event["active"] = False
             del self._weapon_states[wid]
+            self._posted_alerts.discard(wid)
 
         # ── 5. Ownership state machine ────────────────────────────────────────
         frame_has_active_threat = False
@@ -406,18 +415,15 @@ class Detector:
                         state.confirm_frames = 0
                         state.candidate_track_id = None
                         if self.reid_model is not None:
-                            gid = self.reid_model.get_global_id(self.camera_id, nearest_pid)
-
-                            if gid < 0 and self.vector_store is not None:
-                                # Try persistent store (cross-node / cross-restart)
-                                avg_feats = self.reid_model.get_averaged_features(
-                                    self.camera_id, nearest_pid
-                                )
-                                if avg_feats is not None:
-                                    gid = self.vector_store.find_similar(avg_feats) or -1
+                            # Use GID only if step 3 already re-identified
+                            # this person as a returning weapon holder.
+                            # Otherwise mint a fresh GID — a new person
+                            # picking up a weapon always gets a new identity.
+                            gid = self.reid_model.get_global_id(
+                                self.camera_id, nearest_pid
+                            )
 
                             if gid < 0:
-                                # New person — mint globally unique ID
                                 if self.vector_store is not None:
                                     try:
                                         gid = self.vector_store.next_person_id()
@@ -432,6 +438,7 @@ class Detector:
                             self.reid_model.global_person_ids[
                                 (self.camera_id, nearest_pid)
                             ] = gid
+                            self.reid_model.mark_weapon_holder(self.camera_id, nearest_pid)
                             state.owner_global_id = gid
 
                             # Persist embedding (background thread, fire-and-forget)
@@ -519,6 +526,19 @@ class Detector:
                     })
                     self.total_alerts += 1
                     print(f"🚨 ALERT: {wlabel} (ID:{wid}) held by person {state.owner_track_id}")
+
+                    # POST alert to backend (fire-and-forget)
+                    if wid not in self._posted_alerts:
+                        self._posted_alerts.add(wid)
+                        person_bbox = persons[state.owner_track_id]["bbox"]
+                        lat, lon = self.translator.bbox_to_gps(person_bbox)
+                        gid = state.owner_global_id if state.owner_global_id >= 0 else None
+                        topic_prefix = MQTT_TOPIC_STATUS.rsplit("/", 1)[0]
+                        threading.Thread(
+                            target=self._post_alert_to_backend,
+                            args=(lat, lon, wlabel, gid, topic_prefix),
+                            daemon=True,
+                        ).start()
 
         # ── 6. Draw annotations ───────────────────────────────────────────────
         annotated = frame.copy()
@@ -626,6 +646,33 @@ class Detector:
             if self.reid_model.get_global_id(camera_id, pid) == target_global_id:
                 return pid
         return None
+
+    def _post_alert_to_backend(
+        self, lat: float, lon: float, weapon_type: str,
+        person_global_id: int | None, location_id: str,
+    ) -> None:
+        """POST a weapon alert to the backend (runs in background thread)."""
+        alert_type = "weapon"
+        # Build a placeholder GCS URL — the real one is uploaded later by upload_to_gcp
+        gcs_url = f"gs://{GCP_BUCKET_NAME}/pending_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        payload = {
+            "lat": lat,
+            "long": lon,
+            "type": alert_type,
+            "gcs_url": gcs_url,
+            "person_id_hash": str(person_global_id) if person_global_id is not None else None,
+            "location_id": location_id,
+        }
+        try:
+            resp = requests.post(
+                f"{BACKEND_URL}/alerts/cctv", json=payload, timeout=5
+            )
+            if resp.ok:
+                print(f"✅ Alert POSTed to backend: ({lat:.6f}, {lon:.6f}) {weapon_type}")
+            else:
+                print(f"⚠️  Backend responded {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"⚠️  Failed to POST alert to backend: {e}")
 
     def _person_colour(self, camera_id, track_id):
         if self.reid_model is not None:
