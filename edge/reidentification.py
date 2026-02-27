@@ -94,6 +94,9 @@ class PersonReID:
         self.global_person_ids: dict[tuple[int, int], int] = {}
         self._next_global_id: int = 1
 
+        # Only weapon-holder gallery entries are eligible for re-identification
+        self._weapon_holder_keys: set[tuple[int, int]] = set()
+
         # Colour palette — seeded so colours are deterministic
         self._colours = self._generate_colours(50)
 
@@ -175,6 +178,12 @@ class PersonReID:
         """Remove feature history for a track (call when track is lost)."""
         self.camera_features[camera_id].pop(track_id, None)
         self.global_person_ids.pop((camera_id, track_id), None)
+        self._weapon_holder_keys.discard((camera_id, track_id))
+
+    def mark_weapon_holder(self, camera_id: int, track_id: int) -> None:
+        """Mark a track as a confirmed weapon holder so it appears in the
+        gallery searched by _find_gallery_match."""
+        self._weapon_holder_keys.add((camera_id, track_id))
 
     # ------------------------------------------------------------------
     # Matching
@@ -242,14 +251,17 @@ class PersonReID:
         self,
         camera_id: int,
         track_id: int,
-        threshold: float = 0.70,
+        threshold: float = 0.85,
         min_history: int = 3,
         active_track_ids: set[int] | None = None,
     ) -> int:
         """
         Compare (camera_id, track_id) features against every track that
-        already has a global ID.  Returns the best-matching global ID if
-        similarity exceeds threshold, or -1.
+        is a confirmed weapon holder.  Returns the best-matching global ID
+        if similarity exceeds threshold, or -1.
+
+        Only entries in _weapon_holder_keys are searched — this prevents
+        innocent bystanders from snowballing into the same global ID.
 
         Args:
             min_history: minimum number of feature vectors required before
@@ -269,11 +281,13 @@ class PersonReID:
 
         best_sim = threshold
         best_gid = -1
-        for (cam, tid), gid in self.global_person_ids.items():
+        for (cam, tid) in self._weapon_holder_keys:
+            gid = self.global_person_ids.get((cam, tid))
+            if gid is None:
+                continue
             if cam == camera_id and tid == track_id:
                 continue
             # Skip gallery entries whose owner is still visible in this frame
-            # — their global ID is not available to be claimed by someone else.
             if cam == camera_id and active_track_ids and tid in active_track_ids:
                 continue
             other = self.get_averaged_features(cam, tid)

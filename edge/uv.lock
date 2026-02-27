@@ -265,6 +265,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "paho-mqtt" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "sahi" },
     { name = "ultralytics" },
 ]
@@ -287,6 +288,7 @@ requires-dist = [
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "sahi", specifier = ">=0.11.36" },
     { name = "supabase", marker = "extra == 'vector-store'", specifier = ">=2.0.0" },
     { name = "torch", marker = "extra == 'reid'", specifier = ">=2.0.0" },
