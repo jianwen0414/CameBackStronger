@@ -2,13 +2,22 @@ import time
 import subprocess
 import threading
 import os
+import sys
 from dotenv import load_dotenv
 from detector import Detector
+
+# On macOS ffmpeg is bundled via imageio-ffmpeg; on Linux use system ffmpeg
+if sys.platform == "darwin":
+    import imageio_ffmpeg
+    FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+else:
+    FFMPEG_BIN = "ffmpeg"
 
 load_dotenv()
 
 # --- CONFIG ---
-CAMERA_ID    = int(os.getenv("CAMERA_ID", -1))
+CAMERA_ID    = int(os.getenv("CAMERA_ID", 0))  
+# o for ck web cam and mac cam
 CAP_WIDTH    = int(os.getenv("CAP_WIDTH",  640))
 CAP_HEIGHT   = int(os.getenv("CAP_HEIGHT", 480))
 CAP_FPS      = int(os.getenv("CAP_FPS",    30))
@@ -64,19 +73,21 @@ detector = Detector(
     frame_skip=FRAME_SKIP,
     imgsz=IMGSZ,
     use_reid=True,      # ← add this
-    reid_device="cuda",  # or "cuda"
+    reid_device="cpu",  # or "cuda"
 )
 
 # 3. FFmpeg RTSP streamers
 def _make_ffmpeg_cmd(rtsp_url: str) -> list[str]:
     return [
-        'ffmpeg', '-y',
+        FFMPEG_BIN, '-y',
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
         '-pix_fmt', 'bgr24',
         '-s', f'{CAP_WIDTH}x{CAP_HEIGHT}',
         '-r', str(CAP_FPS),
         '-i', '-',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+        '-pix_fmt', 'yuv420p',
+        '-rtsp_transport', 'tcp',
         '-f', 'rtsp', rtsp_url,
     ]
 
