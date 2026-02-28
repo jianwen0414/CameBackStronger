@@ -5,6 +5,7 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Map, BarChart3, Bell, Settings, Shield } from 'lucide-react';
+import { Toaster } from 'sonner';
 import GodView from './components/GodView';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import SettingsPanel from './components/SettingsPanel';
@@ -36,6 +37,17 @@ function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[var(--color-void)] grid-background text-white font-sans">
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'rgba(10, 10, 15, 0.95)',
+            border: '1px solid rgba(255, 0, 64, 0.5)',
+            color: '#fff',
+            backdropFilter: 'blur(12px)',
+          },
+        }}
+      />
       {/* Top Navigation Bar */}
       <header className="h-16 flex-shrink-0 border-b border-white/10 bg-black/40 backdrop-blur-md z-50">
         <div className="h-full flex items-center justify-between px-6">

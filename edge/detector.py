@@ -266,6 +266,12 @@ class Detector:
 
         # Track which weapon alerts have already been POSTed to backend
         self._posted_alerts: set[int] = set()
+        # Cooldown: suppress duplicate alerts for same person+weapon within this window (seconds)
+        self._alert_cooldown = float(os.getenv("ALERT_COOLDOWN", "120"))
+        # Pending alert_id from most recent POST — used to update evidence URL after recording
+        self._pending_alert_id: str | None = None
+        # key = (gid, weapon_label) → timestamp of last alert
+        self._alert_history: dict[tuple, float] = {}
 
         # Frame-skip cache
         self.last_annotated_frame = None
@@ -415,21 +421,69 @@ class Detector:
                         state.confirm_frames = 0
                         state.candidate_track_id = None
                         if self.reid_model is not None:
-                            # Use GID only if step 3 already re-identified
-                            # this person as a returning weapon holder.
-                            # Otherwise mint a fresh GID — a new person
-                            # picking up a weapon always gets a new identity.
+                            # Ensure features exist for this person before
+                            # attempting gallery match (ReID step may not have
+                            # run on this frame).
+                            px1, py1, px2, py2 = persons[nearest_pid]["bbox"]
+                            feats = self.reid_model.extract_features(
+                                frame[py1:py2, px1:px2]
+                            )
+                            self.reid_model.update_features(
+                                self.camera_id, nearest_pid, feats
+                            )
+
+                            # Check if step 3 already re-identified this person
                             gid = self.reid_model.get_global_id(
                                 self.camera_id, nearest_pid
                             )
 
+                            # If not yet matched, try gallery match with relaxed
+                            # min_history (step 3 may not have accumulated enough
+                            # features by the time the weapon is confirmed).
+                            if gid < 0:
+                                # Debug: print similarity against all gallery entries
+                                feat = self.reid_model.get_averaged_features(
+                                    self.camera_id, nearest_pid
+                                )
+                                if feat is not None:
+                                    for (cam, tid) in self.reid_model._weapon_holder_keys:
+                                        g = self.reid_model.global_person_ids.get((cam, tid))
+                                        other = self.reid_model.get_averaged_features(cam, tid)
+                                        if other is not None:
+                                            sim = self.reid_model.cosine_similarity(feat, other)
+                                            print(f"  🔍 ReID: cam{self.camera_id}:t{nearest_pid} vs "
+                                                  f"cam{cam}:t{tid}(G{g}) → sim={sim:.4f}")
+
+                                gid = self.reid_model._find_gallery_match(
+                                    self.camera_id, nearest_pid,
+                                    threshold=0.40,
+                                    min_history=1,
+                                    active_track_ids=set(persons.keys()),
+                                )
+                                if gid >= 0:
+                                    print(f"  ✅ ReID matched → G{gid}")
+                                else:
+                                    print(f"  ❌ ReID no match (threshold=0.40), minting new GID")
+
                             if gid < 0:
                                 if self.vector_store is not None:
-                                    try:
-                                        gid = self.vector_store.next_person_id()
-                                    except Exception:
-                                        gid = self.reid_model._next_global_id
-                                        self.reid_model._next_global_id += 1
+                                    # Query pgvector for cross-process/cross-node match
+                                    avg_feats = self.reid_model.get_averaged_features(
+                                        self.camera_id, nearest_pid
+                                    )
+                                    if avg_feats is not None:
+                                        matched_gid = self.vector_store.find_similar(
+                                            avg_feats, threshold=0.40
+                                        )
+                                        if matched_gid is not None:
+                                            gid = matched_gid
+                                            print(f"  ✅ pgvector cross-process match → G{gid}")
+                                    if gid < 0:
+                                        try:
+                                            gid = self.vector_store.next_person_id()
+                                        except Exception:
+                                            gid = self.reid_model._next_global_id
+                                            self.reid_model._next_global_id += 1
                                 else:
                                     gid = self.reid_model._next_global_id
                                     self.reid_model._next_global_id += 1
@@ -440,6 +494,46 @@ class Detector:
                             ] = gid
                             self.reid_model.mark_weapon_holder(self.camera_id, nearest_pid)
                             state.owner_global_id = gid
+
+                            # Save person photo on FIRST appearance (new GID only).
+                            # person_{gid}.jpg — clean person crop for identification.
+                            # snapshot_{gid}.jpg — wider context with weapon bbox drawn.
+                            photo_path = os.path.join(self.output_dir, f"person_{gid}.jpg")
+                            if not os.path.exists(photo_path):
+                                try:
+                                    px1, py1, px2, py2 = persons[nearest_pid]["bbox"]
+                                    h, w = frame.shape[:2]
+                                    # Person crop with 20% padding
+                                    pad_x = int((px2 - px1) * 0.2)
+                                    pad_y = int((py2 - py1) * 0.2)
+                                    cx1 = max(0, px1 - pad_x)
+                                    cy1 = max(0, py1 - pad_y)
+                                    cx2 = min(w, px2 + pad_x)
+                                    cy2 = min(h, py2 + pad_y)
+                                    cv2.imwrite(photo_path, frame[cy1:cy2, cx1:cx2])
+
+                                    # Annotated snapshot: wider context with weapon box
+                                    snap = frame.copy()
+                                    wx1, wy1, wx2, wy2 = winfo["bbox"]
+                                    wlabel = WEAPON_LABELS.get(winfo["cls"], "Weapon")
+                                    # Draw weapon bbox in red
+                                    cv2.rectangle(snap, (wx1, wy1), (wx2, wy2), self._C_WEAPON, 3)
+                                    self._put_label(snap, f"!! {wlabel}", (wx1, wy1), self._C_WEAPON)
+                                    # Draw person bbox in orange
+                                    cv2.rectangle(snap, (px1, py1), (px2, py2), self._C_CONFIRM, 2)
+                                    self._put_label(snap, f"G{gid}", (px1, py1), self._C_CONFIRM)
+                                    # Crop to combined bbox with padding
+                                    all_x = [cx1, cx2, wx1, wx2]
+                                    all_y = [cy1, cy2, wy1, wy2]
+                                    sx1 = max(0, min(all_x) - 20)
+                                    sy1 = max(0, min(all_y) - 20)
+                                    sx2 = min(w, max(all_x) + 20)
+                                    sy2 = min(h, max(all_y) + 20)
+                                    snap_path = os.path.join(self.output_dir, f"snapshot_{gid}.jpg")
+                                    cv2.imwrite(snap_path, snap[sy1:sy2, sx1:sx2])
+                                    print(f"📸 Saved person photo → {photo_path}")
+                                except Exception as e_photo:
+                                    print(f"⚠️  Photo save failed: {e_photo}")
 
                             # Persist embedding (background thread, fire-and-forget)
                             if self.vector_store is not None:
@@ -528,17 +622,26 @@ class Detector:
                     print(f"🚨 ALERT: {wlabel} (ID:{wid}) held by person {state.owner_track_id}")
 
                     # POST alert to backend (fire-and-forget)
+                    # Deduplicate: skip if same (GID, weapon_type) was alerted within cooldown
                     if wid not in self._posted_alerts:
                         self._posted_alerts.add(wid)
-                        person_bbox = persons[state.owner_track_id]["bbox"]
-                        lat, lon = self.translator.bbox_to_gps(person_bbox)
                         gid = state.owner_global_id if state.owner_global_id >= 0 else None
-                        topic_prefix = MQTT_TOPIC_STATUS.rsplit("/", 1)[0]
-                        threading.Thread(
-                            target=self._post_alert_to_backend,
-                            args=(lat, lon, wlabel, gid, topic_prefix),
-                            daemon=True,
-                        ).start()
+                        dedup_key = (gid, wlabel)
+                        now_t = time.time()
+                        last_t = self._alert_history.get(dedup_key, 0)
+                        if now_t - last_t < self._alert_cooldown:
+                            print(f"  ⏳ Alert suppressed (same person G{gid} + {wlabel}, "
+                                  f"cooldown {self._alert_cooldown}s)")
+                        else:
+                            self._alert_history[dedup_key] = now_t
+                            person_bbox = persons[state.owner_track_id]["bbox"]
+                            lat, lon = self.translator.bbox_to_gps(person_bbox)
+                            topic_prefix = MQTT_TOPIC_STATUS.rsplit("/", 1)[0]
+                            threading.Thread(
+                                target=self._post_alert_to_backend,
+                                args=(lat, lon, wlabel, gid, topic_prefix),
+                                daemon=True,
+                            ).start()
 
         # ── 6. Draw annotations ───────────────────────────────────────────────
         annotated = frame.copy()
@@ -653,7 +756,7 @@ class Detector:
     ) -> None:
         """POST a weapon alert to the backend (runs in background thread)."""
         alert_type = "weapon"
-        # Build a placeholder GCS URL — the real one is uploaded later by upload_to_gcp
+        # Use a placeholder URL — updated after evidence video is saved
         gcs_url = f"gs://{GCP_BUCKET_NAME}/pending_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         payload = {
             "lat": lat,
@@ -668,7 +771,9 @@ class Detector:
                 f"{BACKEND_URL}/alerts/cctv", json=payload, timeout=5
             )
             if resp.ok:
-                print(f"✅ Alert POSTed to backend: ({lat:.6f}, {lon:.6f}) {weapon_type}")
+                data = resp.json()
+                self._pending_alert_id = data.get("alert_id")
+                print(f"✅ Alert POSTed to backend: ({lat:.6f}, {lon:.6f}) {weapon_type}  id={self._pending_alert_id}")
             else:
                 print(f"⚠️  Backend responded {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
@@ -742,12 +847,22 @@ class Detector:
             try:
                 subprocess.run(
                     ["ffmpeg", "-y", "-i", self.temp_filepath,
-                     "-c", "copy", "-movflags", "+faststart", self.final_filepath],
+                     "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                     "-movflags", "+faststart", self.final_filepath],
                     check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
                 if os.path.exists(self.temp_filepath):
                     os.remove(self.temp_filepath)
                 print(f">>> Evidence saved: {self.final_filepath}")
+
+                # Update the backend with the real evidence URL
+                if self._pending_alert_id and self.current_filename:
+                    threading.Thread(
+                        target=self._patch_evidence_url,
+                        args=(self._pending_alert_id, self.current_filename),
+                        daemon=True,
+                    ).start()
+                    self._pending_alert_id = None
 
                 if APP_ENV == "prod":
                     threading.Thread(
@@ -768,6 +883,22 @@ class Detector:
             print(f"✅ Uploaded: gs://{GCP_BUCKET_NAME}/{file_name}")
         except Exception as e:
             print(f"❌ Upload Failed: {e}")
+
+    def _patch_evidence_url(self, alert_id: str, filename: str):
+        """PATCH the evidence_video_url for a previously POSTed alert."""
+        evidence_url = f"{BACKEND_URL}/evidence/{filename}"
+        try:
+            resp = requests.patch(
+                f"{BACKEND_URL}/alerts/danger/{alert_id}/evidence",
+                json={"evidence_url": evidence_url},
+                timeout=5,
+            )
+            if resp.ok:
+                print(f"✅ Evidence URL updated: {evidence_url}")
+            else:
+                print(f"⚠️  Evidence PATCH {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"⚠️  Failed to PATCH evidence URL: {e}")
 
     # ── Alert acknowledgement ─────────────────────────────────────────────────
     def acknowledge_alert(self, weapon_id_str):

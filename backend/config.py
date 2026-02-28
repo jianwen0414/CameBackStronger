@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     # Google Cloud Storage
     gcs_bucket_name: str = "nightwalk-evidence"
     
-    # Gemini AI
+    # Google Maps
+    google_maps_api_key: str = ""
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     

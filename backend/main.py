@@ -48,6 +48,7 @@ from database import (
     get_supabase_client,
     get_person_track,
     update_cctv_stream_url,
+    update_danger_evidence_url,
 )
 from validation_pipeline import process_crime_report
 
@@ -343,6 +344,19 @@ async def patch_cctv_camera(camera_name: str, body: dict):
     try:
         result = await update_cctv_stream_url(camera_name, stream_url)
         return {"success": True, "camera": result}
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.patch("/alerts/danger/{alert_id}/evidence", tags=["Alerts"])
+async def patch_danger_evidence(alert_id: str, body: dict):
+    """Update evidence_video_url for an immediate danger log after recording finishes."""
+    url = body.get("evidence_url")
+    if not url:
+        raise HTTPException(status_code=400, detail="evidence_url required")
+    try:
+        result = await update_danger_evidence_url(alert_id, url)
+        return {"success": True, "alert": result}
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 

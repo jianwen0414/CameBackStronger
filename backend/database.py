@@ -469,6 +469,18 @@ async def update_cctv_stream_url(camera_name: str, stream_url: Optional[str]) ->
     return result.data[0]
 
 
+async def update_danger_evidence_url(alert_id: str, evidence_url: str) -> dict:
+    """Update the evidence_video_url for an immediate danger log entry."""
+    client = get_supabase_client()
+    result = client.table("immediate_danger_logs")\
+        .update({"evidence_video_url": evidence_url})\
+        .eq("id", alert_id)\
+        .execute()
+    if not result.data:
+        raise Exception(f"Danger log '{alert_id}' not found")
+    return result.data[0]
+
+
 async def find_nearby_cctv(
     lat: float,
     long: float,

@@ -4,6 +4,7 @@
  * Supports 4 beacon types: red (danger), yellow (suspicious), blue (CCTV), purple (user reports)
  */
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { supabase, parsePostGISPoint } from '../lib/supabase';
 import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from '../lib/supabase';
 
@@ -282,15 +283,15 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                     // Re-fetch all dangers via RPC for correct lat/long
                     fetchAlerts();
 
-                    // Desktop notification on INSERT
+                    // Toast notification on INSERT
                     if (payload.eventType === 'INSERT') {
                         const newDanger = payload.new as any;
-                        if (newDanger.is_active && 'Notification' in window && Notification.permission === 'granted') {
-                            new Notification('🚨 IMMEDIATE DANGER DETECTED', {
-                                body: `${(newDanger.activity_type || 'UNKNOWN').toUpperCase()} detected`,
-                                icon: '/alert-icon.png'
-                            });
-                        }
+                        const activityType = (newDanger.activity_type || 'UNKNOWN').toUpperCase();
+                        const locationId = newDanger.location_id || '';
+                        toast.error(`🚨 ${activityType} DETECTED`, {
+                            description: locationId ? `Location: ${locationId}` : 'Immediate danger detected',
+                            duration: 8000,
+                        });
                     }
                 }
             )

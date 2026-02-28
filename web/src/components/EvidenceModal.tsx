@@ -24,10 +24,15 @@ import type {
 } from '../lib/supabase';
 import LiveAnalyticsOverlay from './LiveAnalyticsOverlay';
 
-// Default CCTV stream — MediaMTX WebRTC player page (port 8889), sub-second latency.
+// Default CCTV stream — MJPEG from edge main.py (port 8090), zero latency.
 // Override per-camera via the stream_url field in the cctv_cameras table.
 const DEFAULT_STREAM_URL =
-    import.meta.env.VITE_DEFAULT_STREAM_URL || 'http://localhost:8889/mystream/';
+    import.meta.env.VITE_DEFAULT_STREAM_URL || 'http://localhost:8090/';
+
+// Returns true if the URL is an MJPEG endpoint (use <img>) vs a player page (use <iframe>)
+function isMjpegUrl(url: string): boolean {
+    return url.includes(':8090') || url.includes('/mjpeg');
+}
 
 // ============================================================================
 // Style config per beacon type
@@ -152,15 +157,25 @@ function CCTVStreamView({ camera, sourceLabel, onClose }: {
                 </div>
             </div>
 
-            {/* iframe WebRTC stream + Analytics Overlay */}
-            <div className="flex-1 relative bg-black">
-                <iframe
-                    src={streamUrl}
-                    className="w-full h-full border-0"
-                    allow="autoplay; camera; microphone"
-                    title={`${cameraName} Live Feed`}
-                />
-                <LiveAnalyticsOverlay cameraName={cameraName} />
+            {/* Live stream + Analytics Overlay */}
+            <div className="flex-1 relative bg-black overflow-hidden">
+                {isMjpegUrl(streamUrl) ? (
+                    <img
+                        src={streamUrl}
+                        className="absolute inset-0 w-full h-full object-contain z-0"
+                        alt={`${cameraName} Live Feed`}
+                    />
+                ) : (
+                    <iframe
+                        src={streamUrl}
+                        className="absolute inset-0 w-full h-full border-0 z-0"
+                        allow="autoplay; camera; microphone"
+                        title={`${cameraName} Live Feed`}
+                    />
+                )}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                    <LiveAnalyticsOverlay cameraName={cameraName} />
+                </div>
             </div>
         </motion.div>
     );
@@ -230,6 +245,15 @@ function EvidenceVideoPlayer({
 // ============================================================================
 
 function CCTVInfoPanel({ camera, onOpenStream }: { camera: CCTVCamera; onOpenStream: () => void }) {
+    const immediateDangers = useAlertStore(s => s.immediateDangers);
+
+    // Find dangers from this camera by location_id or coordinate proximity (~50m)
+    const nearbyDangers = immediateDangers.filter(d => {
+        if (d.location_id && d.location_id === camera.camera_name) return true;
+        if (!d.lat || !d.long) return false;
+        return Math.hypot(d.lat - camera.lat, d.long - camera.long) < 0.0005;
+    }).sort((a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime());
+
     return (
         <div className="p-5 space-y-4">
             {/* Camera details grid */}
@@ -252,6 +276,44 @@ function CCTVInfoPanel({ camera, onOpenStream }: { camera: CCTVCamera; onOpenStr
                     <span className="text-sm text-gray-300 truncate block">{camera.stream_url ? 'Available' : 'Default stream'}</span>
                 </InfoCard>
             </div>
+
+            {/* Recent alerts near this camera */}
+            {nearbyDangers.length > 0 && (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                            Recent Alerts ({nearbyDangers.length})
+                        </span>
+                    </div>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {nearbyDangers.slice(0, 5).map((d) => (
+                            <button
+                                key={d.id}
+                                onClick={() => {
+                                    useAlertStore.getState().selectAlert(d, 'red');
+                                    useAlertStore.getState().openModal();
+                                }}
+                                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors text-left"
+                            >
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${d.is_active ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`} />
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-xs font-bold text-red-400 uppercase">
+                                        {d.activity_type}
+                                    </span>
+                                    {d.person_id != null && (
+                                        <span className="text-[10px] text-orange-400 ml-2 font-mono">G{d.person_id}</span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">
+                                    {new Date(d.detected_at).toLocaleTimeString()}
+                                </span>
+                                <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Live preview CTA */}
             <button

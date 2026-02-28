@@ -4,7 +4,7 @@
  * Receives data from the MQTT broker via useMqttStore.
  */
 import { useEffect } from 'react';
-import { Users, ShieldAlert, Activity, Wifi, WifiOff, Crosshair, Sword } from 'lucide-react';
+import { Users, Wifi, WifiOff, Crosshair, Sword } from 'lucide-react';
 import { useMqttStore, type CameraAnalytics } from '../store/useMqttStore';
 
 interface LiveAnalyticsOverlayProps {
@@ -105,38 +105,6 @@ export default function LiveAnalyticsOverlay({ cameraName }: LiveAnalyticsOverla
                             </div>
                         </div>
                     </div>
-
-                    {/* Alert count */}
-                    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-sm border
-                        ${data.active_threats > 0
-                            ? 'bg-red-500/20 border-red-500/40'
-                            : 'bg-black/70 border-white/10'}`}
-                    >
-                        <div className={`flex items-center justify-center w-7 h-7 rounded-lg
-                            ${data.active_threats > 0 ? 'bg-red-500/20' : 'bg-yellow-500/10'}`}
-                        >
-                            <ShieldAlert className={`w-4 h-4 ${data.active_threats > 0 ? 'text-red-400 animate-pulse' : 'text-yellow-500'}`} />
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-gray-500 font-mono uppercase leading-none">Alerts</div>
-                            <div className={`text-lg font-bold leading-tight ${data.active_threats > 0 ? 'text-red-400' : 'text-white'}`}>
-                                {data.alert_count}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Active threats */}
-                    {data.active_threats > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/50 backdrop-blur-sm">
-                            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-500/20">
-                                <Activity className="w-4 h-4 text-red-400 animate-pulse" />
-                            </div>
-                            <div>
-                                <div className="text-[10px] text-gray-400 font-mono uppercase leading-none">Active</div>
-                                <div className="text-lg font-bold text-red-400 leading-tight">{data.active_threats}</div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
         </div>
