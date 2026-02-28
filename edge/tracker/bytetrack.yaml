@@ -16,7 +16,7 @@ new_track_thresh:           0.25
 # ── IoU matching ────────────────────────────────────────────────────────────
 # match_thresh: minimum IoU overlap to link a detection to an existing track.
 # 0.5 is low enough for small, fast-moving weapons without causing false links.
-match_thresh: 0.5
+match_thresh: 0.8
 
 # fuse_score: when True, multiplies IoU by detection confidence before
 # matching. Disabled here so matching is based purely on spatial overlap.
@@ -30,7 +30,7 @@ min_hits:     1
 
 # track_buffer: frames a lost track is kept before deletion.
 # Larger values help re-link weapons after brief occlusion.
-track_buffer: 50
+track_buffer: 100
 
 # Camera motion compensation — set True only for PTZ / moving cameras.
 with_reid: False
