@@ -604,6 +604,7 @@ MIT License — Free to use for educational and commercial purposes.
 
 - **📹 Demo Video:** https://youtu.be/A0m7RtnW-kc
 - **📖 Documentation:** https://drive.google.com/file/d/1lrfu-bRk4xFcJyZWZqhl92ECXAQsct0s/view?usp=sharing
+- **📖 Presentation Slides:** https://drive.google.com/file/d/1-wrG1mzZGhh3nb9XsytutMO1NmDNHTTm/view?usp=sharing
 
 ---
 
