@@ -27,6 +27,7 @@ interface AlertState {
     selectedAlertType: BeaconType | null;
     isModalOpen: boolean;
     isCCTVStreamOpen: boolean;
+    trackingPersonId: number | null;
 
     // Beacon filters
     beaconFilters: BeaconFilters;
@@ -41,6 +42,8 @@ interface AlertState {
     closeModal: () => void;
     openCCTVStream: () => void;
     closeCCTVStream: () => void;
+    openTracking: (personId: number) => void;
+    closeTracking: () => void;
     setBeaconFilter: (type: BeaconType, enabled: boolean) => void;
     toggleBeaconFilter: (type: BeaconType) => void;
 }
@@ -56,6 +59,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
     selectedAlertType: null,
     isModalOpen: false,
     isCCTVStreamOpen: false,
+    trackingPersonId: null,
 
     beaconFilters: {
         red: true,
@@ -170,6 +174,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                         location_name: c.location_name,
                         lat: c.lat,
                         long: c.long,
+                        altitude: c.altitude,
                         stream_url: c.stream_url,
                         is_active: c.is_active,
                         last_heartbeat: c.last_heartbeat,
@@ -192,6 +197,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
                             location_name: c.location_name,
                             lat: coords?.lat || 0,
                             long: coords?.long || 0,
+                            altitude: c.altitude,
                             stream_url: c.stream_url,
                             is_active: c.is_active,
                             last_heartbeat: c.last_heartbeat,
@@ -343,6 +349,8 @@ export const useAlertStore = create<AlertState>((set, get) => ({
     closeModal: () => set({ isModalOpen: false, selectedAlert: null, selectedAlertType: null, isCCTVStreamOpen: false }),
     openCCTVStream: () => set({ isCCTVStreamOpen: true }),
     closeCCTVStream: () => set({ isCCTVStreamOpen: false }),
+    openTracking: (personId) => set({ trackingPersonId: personId, isModalOpen: false }),
+    closeTracking: () => set({ trackingPersonId: null }),
     setBeaconFilter: (type, enabled) => set((state) => ({
         beaconFilters: { ...state.beaconFilters, [type]: enabled }
     })),

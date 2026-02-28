@@ -77,7 +77,9 @@ async def insert_immediate_danger(
     long: float,
     activity_type: str,
     evidence_url: str,
-    location_name: Optional[str] = None
+    location_name: Optional[str] = None,
+    person_id_hash: Optional[str] = None,
+    location_id: Optional[str] = None
 ) -> dict:
     """
     Insert a new immediate danger log entry.
@@ -88,6 +90,8 @@ async def insert_immediate_danger(
         activity_type: Type of danger (fight, weapon, robbery, fall)
         evidence_url: URL to evidence video
         location_name: Optional location name/description
+        person_id_hash: Optional person ID from ReID system (stored as integer)
+        location_id: Optional camera/location identifier
     
     Returns:
         Dictionary containing the inserted record
@@ -109,6 +113,13 @@ async def insert_immediate_danger(
     
     if location_name:
         data["location_name"] = location_name
+    if person_id_hash is not None:
+        try:
+            data["person_id"] = int(person_id_hash)
+        except (ValueError, TypeError):
+            pass
+    if location_id:
+        data["location_id"] = location_id
     
     try:
         result = client.table("immediate_danger_logs").insert(data).execute()
@@ -382,15 +393,26 @@ async def verify_user_token(access_token: str) -> Optional[dict]:
 async def get_all_cctv_cameras() -> list[dict]:
     """
     Get all active CCTV cameras for dashboard display.
-    Uses RPC function for coordinate extraction.
+    Uses RPC for coordinate extraction, supplements altitude from direct query.
     """
     client = get_supabase_client()
-    
+
     try:
-        result = client.rpc("get_all_cctv").execute()
-        return result.data or []
+        # RPC handles PostGIS coordinate extraction into lat/long
+        rpc_result = client.rpc("get_all_cctv").execute()
+        cameras = list(rpc_result.data or [])
+
+        # RPC may not include altitude — fetch it separately and merge
+        try:
+            alt_result = client.table("cctv_cameras").select("id, altitude").execute()
+            alt_map = {row["id"]: row.get("altitude") for row in (alt_result.data or [])}
+            cameras = [{**c, "altitude": alt_map.get(c["id"])} for c in cameras]
+        except Exception:
+            pass
+
+        return cameras
     except Exception:
-        # Fallback to direct query
+        # Full fallback to direct query
         result = client.table("cctv_cameras")\
             .select("*")\
             .eq("is_active", True)\
@@ -405,7 +427,8 @@ async def insert_cctv_camera(
     long: float,
     location_name: Optional[str] = None,
     stream_url: Optional[str] = None,
-    zone_id: Optional[str] = None
+    zone_id: Optional[str] = None,
+    altitude: float = 0.0
 ) -> dict:
     """Insert a new CCTV camera."""
     client = get_supabase_client()
@@ -416,6 +439,7 @@ async def insert_cctv_camera(
         "camera_name": camera_name,
         "coordinates": point,
         "is_active": True,
+        "altitude": altitude,
     }
     if location_name:
         data["location_name"] = location_name
@@ -431,6 +455,18 @@ async def insert_cctv_camera(
         return result.data[0]
     except Exception as e:
         raise Exception(f"Failed to insert CCTV camera: {str(e)}")
+
+
+async def update_cctv_stream_url(camera_name: str, stream_url: Optional[str]) -> dict:
+    """Update the stream_url for an existing CCTV camera by name."""
+    client = get_supabase_client()
+    result = client.table("cctv_cameras")\
+        .update({"stream_url": stream_url})\
+        .eq("camera_name", camera_name)\
+        .execute()
+    if not result.data:
+        raise Exception(f"Camera '{camera_name}' not found")
+    return result.data[0]
 
 
 async def find_nearby_cctv(
@@ -596,3 +632,71 @@ async def update_crime_report_validation(
         return result.data[0]
     except Exception as e:
         raise Exception(f"Failed to update crime report: {str(e)}")
+
+
+async def get_person_track(person_id: int) -> list[dict]:
+    """
+    Get all immediate danger sightings for a given person_id (ReID tracking).
+    Returns chronological list with camera details merged in.
+    """
+    client = get_supabase_client()
+
+    try:
+        # Query immediate_danger_logs by person_id, ordered chronologically
+        result = client.table("immediate_danger_logs")\
+            .select("id, location_name, activity_type, evidence_video_url, is_active, detected_at, person_id, location_id")\
+            .eq("person_id", person_id)\
+            .order("detected_at", desc=False)\
+            .execute()
+
+        sightings = result.data or []
+
+        # Get all CCTV cameras for location_id matching
+        cameras_result = client.rpc("get_all_cctv").execute()
+        cameras = cameras_result.data or []
+        cam_by_name = {c.get("camera_name"): c for c in cameras}
+
+        # Supplement altitude
+        try:
+            alt_result = client.table("cctv_cameras").select("id, altitude").execute()
+            alt_map = {row["id"]: row.get("altitude") for row in (alt_result.data or [])}
+        except Exception:
+            alt_map = {}
+
+        # Merge: extract coordinates from the danger log itself, and camera info from location_id
+        enriched = []
+        for s in sightings:
+            # Parse coordinates from the sighting (EWKB hex → need RPC)
+            # Use the get_immediate_dangers RPC for coordinate extraction
+            entry = {
+                "id": s["id"],
+                "activity_type": s.get("activity_type"),
+                "evidence_video_url": s.get("evidence_video_url"),
+                "detected_at": s.get("detected_at"),
+                "is_active": s.get("is_active"),
+                "person_id": s.get("person_id"),
+                "location_id": s.get("location_id"),
+                "location_name": s.get("location_name"),
+                "camera_name": None,
+                "camera_lat": None,
+                "camera_long": None,
+                "camera_altitude": None,
+            }
+
+            # Match location_id to camera (location_id is typically "cam-XX")
+            loc_id = s.get("location_id")
+            if loc_id:
+                for cam in cameras:
+                    if cam.get("camera_name", "").lower().replace(" ", "-") == loc_id or \
+                       cam.get("camera_name") == loc_id:
+                        entry["camera_name"] = cam.get("camera_name")
+                        entry["camera_lat"] = cam.get("lat")
+                        entry["camera_long"] = cam.get("long")
+                        entry["camera_altitude"] = alt_map.get(cam.get("id"))
+                        break
+
+            enriched.append(entry)
+
+        return enriched
+    except Exception as e:
+        raise Exception(f"Failed to get person track: {str(e)}")

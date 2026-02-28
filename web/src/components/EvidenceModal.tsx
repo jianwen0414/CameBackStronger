@@ -24,7 +24,7 @@ import type {
 } from '../lib/supabase';
 import LiveAnalyticsOverlay from './LiveAnalyticsOverlay';
 
-// Default CCTV stream — MediaMTX WebRTC player page (port 8889), embedded as an iframe.
+// Default CCTV stream — MediaMTX WebRTC player page (port 8889), sub-second latency.
 // Override per-camera via the stream_url field in the cctv_cameras table.
 const DEFAULT_STREAM_URL =
     import.meta.env.VITE_DEFAULT_STREAM_URL || 'http://localhost:8889/mystream/';
@@ -718,6 +718,21 @@ export default function EvidenceModal() {
                                         <SourceCameraBar camera={nearestCamera} accentRgb={style.accentRgb} />
                                         <EvidenceVideoPlayer url={evidenceUrl} videoRef={videoRef} />
                                         <ThreatDetailsPanel danger={selectedAlert as ImmediateDanger} />
+                                        {(selectedAlert as ImmediateDanger).person_id != null && (
+                                            <div className="mx-4 mt-3">
+                                                <button
+                                                    onClick={() => {
+                                                        const pid = (selectedAlert as ImmediateDanger).person_id!;
+                                                        useAlertStore.getState().openTracking(pid);
+                                                    }}
+                                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm transition-colors bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20"
+                                                >
+                                                    <Users className="w-4 h-4" />
+                                                    Track Movement — Person #{(selectedAlert as ImmediateDanger).person_id}
+                                                    <ChevronRight className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </>
                                 )}
 

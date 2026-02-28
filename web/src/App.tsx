@@ -9,6 +9,7 @@ import GodView from './components/GodView';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import SettingsPanel from './components/SettingsPanel';
 import EvidenceModal from './components/EvidenceModal';
+import PersonTrackingPage from './components/PersonTrackingPage';
 import { useAlertStore } from './store/useAlertStore';
 import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from './lib/supabase';
 import { Landing } from './pages/Landing';
@@ -165,6 +166,9 @@ function App() {
 
       {/* Evidence Modal */}
       <EvidenceModal />
+
+      {/* Person Tracking Overlay */}
+      <PersonTrackingPage />
     </div>
   );
 }

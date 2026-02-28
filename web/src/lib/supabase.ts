@@ -24,9 +24,12 @@ export type ImmediateDanger = {
     evidence_video_url: string;
     is_active: boolean;
     detected_at: string;
+    person_id?: number;
+    location_id?: string;
     // Parsed coordinates
     lat?: number;
     long?: number;
+    altitude?: number;
 };
 
 export type SuspiciousLog = {
@@ -40,6 +43,7 @@ export type SuspiciousLog = {
     detected_at: string;
     lat?: number;
     long?: number;
+    altitude?: number;
 };
 
 export type CCTVCamera = {
@@ -48,6 +52,7 @@ export type CCTVCamera = {
     location_name?: string;
     lat: number;
     long: number;
+    altitude?: number;
     stream_url?: string;
     is_active: boolean;
     last_heartbeat?: string;
@@ -65,6 +70,7 @@ export type UserReportedCrime = {
     reporter_id?: string;
     lat: number;
     long: number;
+    altitude?: number;
     crime_type: CrimeType;
     description?: string;
     evidence_video_url: string;
