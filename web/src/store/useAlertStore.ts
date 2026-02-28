@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Alert Store (Zustand)
+ * JagaJaga Web - Alert Store (Zustand)
  * Manages real-time alert state with Supabase Realtime subscriptions
  * Supports 4 beacon types: red (danger), yellow (suspicious), blue (CCTV), purple (user reports)
  */

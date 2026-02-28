@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - MQTT Store (Zustand)
+ * JagaJaga Web - MQTT Store (Zustand)
  * Manages a single MQTT WebSocket connection to the Mosquitto broker.
  * Subscribes to the `+/analytics` wildcard topic to receive real-time
  * per-camera analytics (person count, alert count, active threats).
@@ -51,7 +51,7 @@ export const useMqttStore = create<MqttState>((set, get) => ({
         if (existing) return; // already connected
 
         const client = mqtt.connect(MQTT_WS_URL, {
-            clientId: `nightwalk-web-${Math.random().toString(16).slice(2, 8)}`,
+            clientId: `JagaJaga-web-${Math.random().toString(16).slice(2, 8)}`,
             clean: true,
             reconnectPeriod: 3000,
         });

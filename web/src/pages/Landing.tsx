@@ -6,5 +6,5 @@ interface LandingProps {
 }
 
 export const Landing = ({ onEnter }: LandingProps) => {
-  return <BackgroundPaths title="NIGHTWALK" onClick={onEnter} />;
+  return <BackgroundPaths title="JagaJaga" onClick={onEnter} />;
 };

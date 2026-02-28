@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Beacon Filter Panel
+ * JagaJaga Web - Beacon Filter Panel
  * Allows toggling visibility of the 4 beacon types on the God View map
  */
 import { motion } from 'framer-motion';

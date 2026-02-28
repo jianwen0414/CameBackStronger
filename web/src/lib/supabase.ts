@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Supabase Client
+ * JagaJaga Web - Supabase Client
  */
 import { createClient } from '@supabase/supabase-js';
 

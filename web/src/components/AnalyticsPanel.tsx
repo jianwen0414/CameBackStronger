@@ -85,7 +85,7 @@ export default function AnalyticsPanel() {
                 <div className="w-full flex flex-col items-center px-8 mb-20">
                     <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1 }} className="text-center mb-16">
                         <ShieldAlert className="w-16 h-16 text-[#00aaff] mx-auto mb-6 opacity-80" />
-                        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter text-white mb-4">NightWalk Analytics</h1>
+                        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter text-white mb-4">JagaJaga Analytics</h1>
                         <p className="text-gray-400 font-mono text-sm tracking-widest uppercase">Weapon Detection · Cross-Camera ReID · Threat Intelligence</p>
                     </motion.div>
 

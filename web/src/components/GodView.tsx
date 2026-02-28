@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - God View Component
+ * JagaJaga Web - God View Component
  * 4-Layer 3D city visualization using deck.gl with Google Photorealistic 3D Tiles
  * 
  * Layer 1: City Overview  - Wide zoom with green/red representative beacons per residential area

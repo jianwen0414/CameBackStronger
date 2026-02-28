@@ -24,7 +24,7 @@ export function DottedSurface({ className, ...props }: DottedSurfaceProps) {
 
         // Scene setup
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x0a0a0a, 2000, 10000); // Dark fog to match NightWalk
+        scene.fog = new THREE.Fog(0x0a0a0a, 2000, 10000); // Dark fog to match JagaJaga
 
         const camera = new THREE.PerspectiveCamera(
             60,
@@ -58,7 +58,7 @@ export function DottedSurface({ className, ...props }: DottedSurfaceProps) {
                 const z = iy * SEPARATION - (AMOUNTY * SEPARATION) / 2;
 
                 positions.push(x, y, z);
-                // NightWalk is exclusively dark mode, so we use light particles
+                // JagaJaga is exclusively dark mode, so we use light particles
                 colors.push(150, 150, 150);
             }
         }

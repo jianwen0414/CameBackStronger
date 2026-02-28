@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Settings Panel
+ * JagaJaga Web - Settings Panel
  * Camera management: list all CCTV cameras and register new ones
  */
 import { useEffect, useState, useCallback } from 'react';

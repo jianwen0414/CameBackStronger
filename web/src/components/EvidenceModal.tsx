@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Evidence Modal
+ * JagaJaga Web - Evidence Modal
  *
  * Beacon logic:
  *   Blue   → CCTV camera in normal state – shows camera info + real-time feed

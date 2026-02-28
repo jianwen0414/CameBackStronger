@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Main Application
+ * JagaJaga Web - Main Application
  * Control Room Dashboard with God View and Analytics
  */
 import { useState, useCallback } from 'react';
@@ -58,7 +58,7 @@ function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-white">
-                NIGHTWALK
+                JagaJaga
               </h1>
               <p className="text-[10px] text-gray-400 tracking-widest uppercase font-mono">
                 Control Room
@@ -171,7 +171,7 @@ function App() {
             <span>Response Time: <span className="text-gray-300">45ms</span></span>
           </div>
           <div className="flex items-center gap-2">
-            <span>NightWalk Dashboard</span>
+            <span>JagaJaga Dashboard</span>
           </div>
         </div>
       </footer>

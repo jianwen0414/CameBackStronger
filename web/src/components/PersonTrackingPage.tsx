@@ -1,5 +1,5 @@
 /**
- * NightWalk Web - Person Tracking Page
+ * JagaJaga Web - Person Tracking Page
  * Shows cross-camera movement timeline for a weapon holder (ReID).
  * Displays chronological sightings with camera details and evidence videos.
  */
