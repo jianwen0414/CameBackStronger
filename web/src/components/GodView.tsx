@@ -5,6 +5,9 @@
  * Layer 1: City Overview  - Wide zoom with green/red representative beacons per residential area
  * Layer 2: Residential    - Street-level zoom with individual beacons + modal incident view
  * 
+ * All beacons render as WebGL deck.gl layers (ScatterplotLayer + TextLayer)
+ * so they stay perfectly in sync with the 3D tiles during pan/rotate/zoom.
+ *
  * Beacon Types:
  *   Red    - Immediate danger (weapon, fight, bomb)
  *   Yellow - Suspicious behavior
@@ -14,7 +17,8 @@
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Tile3DLayer } from '@deck.gl/geo-layers';
-import type { MapViewState } from '@deck.gl/core';
+import { ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import type { MapViewState, PickingInfo } from '@deck.gl/core';
 import { useAlertStore } from '../store/useAlertStore';
 import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from '../lib/supabase';
 import BeaconFilterPanel from './BeaconFilterPanel';
@@ -66,95 +70,27 @@ interface GodViewProps {
 }
 
 // ============================================================================
-// Beacon Components
+// Beacon colours (RGBA 0-255)
 // ============================================================================
+const COLORS = {
+    red: [255, 0, 64] as [number, number, number],       // #ff0040
+    yellow: [255, 200, 0] as [number, number, number],    // #ffc800
+    blue: [56, 189, 248] as [number, number, number],     // sky-400
+    purple: [168, 85, 247] as [number, number, number],   // purple-500
+    green: [0, 255, 136] as [number, number, number],     // #00ff88
+    threatRed: [255, 0, 64] as [number, number, number],  // #ff0040
+};
 
-function DangerBeacon({ onClick, activityType }: {
-    alert: ImmediateDanger;
-    onClick: () => void;
-    activityType: string;
-}) {
-    return (
-        <div className="map-beacon map-beacon--danger" onClick={onClick}
-            title={`${activityType.toUpperCase()} - Click for details`}>
-            <div className="beacon-glow" />
-            <div className="beacon-glow" style={{ animationDelay: '1s' }} />
-            <div className="beacon-ring" />
-            <div className="beacon-ring" />
-            <div className="beacon-ring" />
-            <div className="beacon-beam" />
-            <div className="beacon-core" />
-            <div className="beacon-core-inner" />
-            <div className="beacon-sparkle" style={{ top: '20%', left: '20%', animationDelay: '0s' }} />
-            <div className="beacon-sparkle" style={{ top: '30%', right: '25%', animationDelay: '0.5s' }} />
-            <div className="beacon-sparkle" style={{ bottom: '25%', left: '30%', animationDelay: '1s' }} />
-            <div className="beacon-sparkle" style={{ bottom: '20%', right: '20%', animationDelay: '1.5s' }} />
-            <div className="map-beacon-label">⚠ {activityType.toUpperCase()}</div>
-        </div>
-    );
-}
-
-function SuspiciousBeacon({ onClick }: {
-    alert: SuspiciousLog;
-    onClick: () => void;
-}) {
-    return (
-        <div className="map-beacon map-beacon--suspicious" onClick={onClick}
-            title="Suspicious Activity - Click for details">
-            <div className="beacon-glow" />
-            <div className="beacon-glow" style={{ animationDelay: '1.25s' }} />
-            <div className="beacon-ring" />
-            <div className="beacon-ring" />
-            <div className="beacon-core" />
-            <div className="beacon-core-inner" />
-            <div className="beacon-sparkle" style={{ top: '25%', left: '25%', animationDelay: '0s' }} />
-            <div className="beacon-sparkle" style={{ top: '30%', right: '30%', animationDelay: '0.7s' }} />
-            <div className="beacon-sparkle" style={{ bottom: '30%', left: '25%', animationDelay: '1.4s' }} />
-            <div className="map-beacon-label">👁 SUSPICIOUS</div>
-        </div>
-    );
-}
-
-function CCTVBeacon({ camera, onClick }: {
-    camera: CCTVCamera;
-    onClick: () => void;
-}) {
-    return (
-        <div className="map-beacon map-beacon--cctv" onClick={onClick}
-            title={`${camera.camera_name} - Click for live feed`}>
-            <div className="beacon-glow" />
-            <div className="beacon-glow" style={{ animationDelay: '1.5s' }} />
-            <div className="beacon-ring" />
-            <div className="beacon-ring" />
-            <div className="beacon-core" />
-            <div className="beacon-core-inner" />
-            <div className="beacon-sparkle" style={{ top: '25%', left: '25%', animationDelay: '0s' }} />
-            <div className="beacon-sparkle" style={{ bottom: '30%', right: '25%', animationDelay: '0.8s' }} />
-            <div className="map-beacon-label">📹 {camera.camera_name}</div>
-        </div>
-    );
-}
-
-function ReportBeacon({ report, onClick }: {
-    report: UserReportedCrime;
-    onClick: () => void;
-}) {
-    return (
-        <div className="map-beacon map-beacon--report" onClick={onClick}
-            title={`User Report: ${report.crime_type.toUpperCase()} - Click for details`}>
-            <div className="beacon-glow" />
-            <div className="beacon-glow" style={{ animationDelay: '1.25s' }} />
-            <div className="beacon-ring" />
-            <div className="beacon-ring" />
-            <div className="beacon-beam" />
-            <div className="beacon-core" />
-            <div className="beacon-core-inner" />
-            <div className="beacon-sparkle" style={{ top: '20%', left: '20%', animationDelay: '0s' }} />
-            <div className="beacon-sparkle" style={{ top: '30%', right: '25%', animationDelay: '0.6s' }} />
-            <div className="beacon-sparkle" style={{ bottom: '25%', left: '30%', animationDelay: '1.2s' }} />
-            <div className="map-beacon-label">🟣 {report.crime_type.toUpperCase()}</div>
-        </div>
-    );
+// Unified beacon data point for ScatterplotLayer
+interface BeaconDatum {
+    id: string;
+    lng: number;
+    lat: number;
+    alt: number;
+    color: [number, number, number];
+    type: BeaconType | 'area';
+    label: string;
+    source: ImmediateDanger | SuspiciousLog | CCTVCamera | UserReportedCrime | ResidentialArea & { hasThreat: boolean };
 }
 
 // ============================================================================
@@ -206,6 +142,13 @@ export default function GodView({ onAlertClick }: GodViewProps) {
     const [viewState, setViewState] = useState<MapViewState>(RESIDENTIAL_VIEW_STATE);
     const [currentLayer, setCurrentLayer] = useState<ViewLayer>(2);
     const terrainAltRef = useRef(50); // Approximate terrain elevation for Ipoh, Malaysia area
+
+    // Animate pulse rings
+    const [pulsePhase, setPulsePhase] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setPulsePhase(p => (p + 1) % 60), 50); // ~20fps animation
+        return () => clearInterval(id);
+    }, []);
 
     useEffect(() => {
         fetchAlerts();
@@ -259,7 +202,131 @@ export default function GodView({ onAlertClick }: GodViewProps) {
         if (onAlertClick) onAlertClick(alert, type);
     }, [onAlertClick, selectAlert, openModal]);
 
+    // ========================================================================
+    // Build beacon data for deck.gl layers
+    // ========================================================================
+    const defaultAlt = terrainAltRef.current;
+
+    // alertData: red/yellow/purple — stay at exact coordinates, get pulse rings
+    // cctvData:  blue — offset ~12m NE so they never stack over alerts
+    const CCTV_LNG_OFFSET = 0.00010; // ~11m east
+    const CCTV_LAT_OFFSET = 0.00005; // ~5.5m north
+
+    const { alertData, cctvData } = useMemo(() => {
+        const alerts: BeaconDatum[] = [];
+        const cctv: BeaconDatum[] = [];
+
+        if (currentLayer === 1) {
+            for (const area of areaStatuses) {
+                alerts.push({
+                    id: area.id,
+                    lng: area.longitude,
+                    lat: area.latitude,
+                    alt: defaultAlt,
+                    color: area.hasThreat ? COLORS.threatRed : COLORS.green,
+                    type: 'area',
+                    label: `${area.hasThreat ? '⚠' : '✓'} ${area.name}`,
+                    source: area,
+                });
+            }
+        }
+
+        if (currentLayer === 2) {
+            if (beaconFilters.yellow) {
+                for (const s of suspiciousLogs) {
+                    if (!s.lat || !s.long) continue;
+                    alerts.push({
+                        id: s.id,
+                        lng: s.long!,
+                        lat: s.lat!,
+                        alt: s.altitude ?? defaultAlt,
+                        color: COLORS.yellow,
+                        type: 'yellow',
+                        label: '👁 SUSPICIOUS',
+                        source: s,
+                    });
+                }
+            }
+
+            if (beaconFilters.purple) {
+                for (const r of userReportedCrimes) {
+                    if (!r.lat || !r.long) continue;
+                    alerts.push({
+                        id: r.id,
+                        lng: r.long,
+                        lat: r.lat,
+                        alt: r.altitude ?? defaultAlt,
+                        color: COLORS.purple,
+                        type: 'purple',
+                        label: `🟣 ${r.crime_type.toUpperCase()}`,
+                        source: r,
+                    });
+                }
+            }
+
+            if (beaconFilters.red) {
+                for (const d of immediateDangers) {
+                    if (!d.lat || !d.long) continue;
+                    alerts.push({
+                        id: d.id,
+                        lng: d.long!,
+                        lat: d.lat!,
+                        alt: d.altitude ?? defaultAlt,
+                        color: COLORS.red,
+                        type: 'red',
+                        label: `⚠ ${d.activity_type.toUpperCase()}`,
+                        source: d,
+                    });
+                }
+            }
+
+            // CCTV beacons offset so they never stack over alerts
+            if (beaconFilters.blue) {
+                for (const c of cctvCameras) {
+                    if (!c.lat || !c.long) continue;
+                    cctv.push({
+                        id: c.id,
+                        lng: c.long + CCTV_LNG_OFFSET,
+                        lat: c.lat + CCTV_LAT_OFFSET,
+                        alt: c.altitude ?? defaultAlt,
+                        color: COLORS.blue,
+                        type: 'blue',
+                        label: `📹 ${c.camera_name}`,
+                        source: c,
+                    });
+                }
+            }
+        }
+
+        return { alertData: alerts, cctvData: cctv };
+    }, [currentLayer, areaStatuses, immediateDangers, suspiciousLogs, cctvCameras, userReportedCrimes, beaconFilters, defaultAlt]);
+
+    // ========================================================================
+    // Handle click on a beacon
+    // ========================================================================
+    const onBeaconClick = useCallback((info: PickingInfo) => {
+        const d = info.object as BeaconDatum | undefined;
+        if (!d) return;
+
+        if (d.type === 'area') {
+            const area = d.source as ResidentialArea & { hasThreat: boolean };
+            handleLayerChange(2, area.longitude, area.latitude);
+        } else {
+            handleAlertClick(
+                d.source as ImmediateDanger | SuspiciousLog | CCTVCamera | UserReportedCrime,
+                d.type as BeaconType
+            );
+        }
+    }, [handleLayerChange, handleAlertClick]);
+
+    // ========================================================================
+    // Build deck.gl layers
+    // ========================================================================
+    const pulseScale = 1 + 0.4 * Math.sin((pulsePhase / 60) * Math.PI * 2); // 1.0 – 1.4
+    const pulseOpacity = 60 + 40 * Math.sin((pulsePhase / 60) * Math.PI * 2); // 60 – 100
+
     const layers = useMemo(() => [
+        // Google 3D Tiles
         new Tile3DLayer({
             id: 'google-3d-tiles',
             data: GOOGLE_3D_TILES_URL,
@@ -272,16 +339,138 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                 const { cartographicCenter } = tileset;
                 if (cartographicCenter) {
                     const alt = cartographicCenter[2];
-                    // Only use tileset altitude if it's a reasonable terrain value (0-500m)
-                    // Google global 3D Tiles root returns Earth-center altitude (~-6M), which is unusable
                     if (alt > 0 && alt < 500) {
                         terrainAltRef.current = alt;
                     }
-                    console.log('Tileset loaded at:', cartographicCenter, 'terrain alt used:', terrainAltRef.current);
                 }
             }
-        })
-    ], []);
+        }),
+
+        // ── CCTV beacons (blue, no pulse, small, offset from alerts) ─────────
+        // Static dot only — no pulse rings so alerts are visually dominant
+        new ScatterplotLayer<BeaconDatum>({
+            id: 'cctv-core',
+            data: cctvData,
+            pickable: true,
+            stroked: true,
+            filled: true,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getRadius: 4,
+            getFillColor: (d: BeaconDatum) => [...d.color, 200] as [number, number, number, number],
+            getLineColor: [255, 255, 255, 120],
+            getLineWidth: 1.5,
+            lineWidthUnits: 'pixels' as const,
+            radiusUnits: 'meters' as const,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            onClick: onBeaconClick,
+        }),
+        new TextLayer<BeaconDatum>({
+            id: 'cctv-labels',
+            data: cctvData,
+            pickable: true,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getText: (d: BeaconDatum) => d.label,
+            getSize: 10,
+            getColor: (d: BeaconDatum) => [...d.color, 200] as [number, number, number, number],
+            getAngle: 0,
+            getPixelOffset: [12, -14],
+            fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+            fontWeight: 600,
+            outlineWidth: 3,
+            outlineColor: [0, 0, 0, 200],
+            background: true,
+            getBackgroundColor: [10, 10, 15, 160],
+            backgroundPadding: [4, 2],
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            onClick: onBeaconClick,
+        }),
+
+        // ── Alert beacons (red/yellow/purple/area) — full pulse animation ─────
+        // Outer pulse ring
+        new ScatterplotLayer<BeaconDatum>({
+            id: 'alert-pulse-outer',
+            data: alertData,
+            pickable: false,
+            stroked: true,
+            filled: false,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getRadius: currentLayer === 1 ? 60 * pulseScale : 18 * pulseScale,
+            getLineColor: (d: BeaconDatum) => [...d.color, pulseOpacity] as [number, number, number, number],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels' as const,
+            radiusUnits: 'meters' as const,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            updateTriggers: {
+                getRadius: [pulseScale, currentLayer],
+                getLineColor: [pulseOpacity],
+            },
+        }),
+        // Middle ring
+        new ScatterplotLayer<BeaconDatum>({
+            id: 'alert-pulse-inner',
+            data: alertData,
+            pickable: false,
+            stroked: true,
+            filled: false,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getRadius: currentLayer === 1 ? 40 * pulseScale : 12 * pulseScale,
+            getLineColor: (d: BeaconDatum) => [...d.color, pulseOpacity + 30] as [number, number, number, number],
+            getLineWidth: 1.5,
+            lineWidthUnits: 'pixels' as const,
+            radiusUnits: 'meters' as const,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            updateTriggers: {
+                getRadius: [pulseScale, currentLayer],
+                getLineColor: [pulseOpacity],
+            },
+        }),
+        // Solid core dot
+        new ScatterplotLayer<BeaconDatum>({
+            id: 'alert-core',
+            data: alertData,
+            pickable: true,
+            stroked: true,
+            filled: true,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getRadius: currentLayer === 1 ? 20 : 6,
+            getFillColor: (d: BeaconDatum) => [...d.color, 220] as [number, number, number, number],
+            getLineColor: [255, 255, 255, 150],
+            getLineWidth: 1.5,
+            lineWidthUnits: 'pixels' as const,
+            radiusUnits: 'meters' as const,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            onClick: onBeaconClick,
+            updateTriggers: {
+                getRadius: [currentLayer],
+            },
+        }),
+        // Alert labels (above the dot)
+        new TextLayer<BeaconDatum>({
+            id: 'alert-labels',
+            data: alertData,
+            pickable: true,
+            getPosition: (d: BeaconDatum) => [d.lng, d.lat, d.alt],
+            getText: (d: BeaconDatum) => d.label,
+            getSize: currentLayer === 1 ? 13 : 11,
+            getColor: (d: BeaconDatum) => [...d.color, 255] as [number, number, number, number],
+            getAngle: 0,
+            getPixelOffset: [0, currentLayer === 1 ? -30 : -20],
+            fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+            fontWeight: 700,
+            outlineWidth: 3,
+            outlineColor: [0, 0, 0, 200],
+            background: true,
+            getBackgroundColor: [10, 10, 15, 180],
+            backgroundPadding: [6, 3],
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            onClick: onBeaconClick,
+            updateTriggers: {
+                getSize: [currentLayer],
+                getPixelOffset: [currentLayer],
+            },
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    ], [alertData, cctvData, pulseScale, pulseOpacity, currentLayer, onBeaconClick]);
 
     return (
         <div className="relative w-full h-full">
@@ -292,108 +481,8 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                 controller={true}
                 layers={layers}
                 style={{ background: 'var(--bg-primary)' }}
-            >
-                {({ viewport }) => {
-                    if (!viewport) return null;
-
-                    return (
-                        <>
-
-
-                            {/* ===== City Overview: Residential Area Representative Beacons ===== */}
-                            {currentLayer === 1 && areaStatuses.map(area => {
-                                const [x, y] = viewport.project([area.longitude, area.latitude, terrainAltRef.current]);
-                                const color = area.hasThreat ? '#ff0040' : '#00ff88';
-                                return (
-                                    <div
-                                        key={area.id}
-                                        style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}
-                                        onClick={() => handleLayerChange(2, area.longitude, area.latitude)}
-                                        className="cursor-pointer group"
-                                        title={`${area.name} — ${area.hasThreat ? 'THREATS DETECTED' : 'All Clear'}`}
-                                    >
-                                        {/* Outer pulse rings */}
-                                        <div className="absolute -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full animate-ping opacity-20"
-                                            style={{ background: color }} />
-                                        <div className="absolute -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full animate-pulse opacity-30"
-                                            style={{ background: color, animationDelay: '0.5s' }} />
-                                        {/* Core dot */}
-                                        <div className="absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white/60"
-                                            style={{ background: color, boxShadow: `0 0 18px ${color}, 0 0 40px ${color}55` }} />
-                                        {/* Label */}
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 whitespace-nowrap text-[10px] font-mono tracking-wide px-2 py-0.5 rounded bg-black/60 border border-white/10"
-                                            style={{ color }}>
-                                            {area.hasThreat ? '⚠' : '✓'} {area.name}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-
-                            {/* ===== Residential View: Individual Beacons ===== */}
-                            {/* Red Beacons - Immediate Danger */}
-                            {currentLayer === 2 && beaconFilters.red && immediateDangers
-                                .filter(d => d.lat && d.long)
-                                .map(danger => {
-                                    const [x, y] = viewport.project([danger.long!, danger.lat!, terrainAltRef.current]);
-                                    return (
-                                        <div key={danger.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
-                                            <DangerBeacon
-                                                alert={danger}
-                                                activityType={danger.activity_type}
-                                                onClick={() => handleAlertClick(danger, 'red')}
-                                            />
-                                        </div>
-                                    );
-                                })}
-
-                            {/* Yellow Beacons - Suspicious Activity */}
-                            {currentLayer === 2 && beaconFilters.yellow && suspiciousLogs
-                                .filter(s => s.lat && s.long)
-                                .map(suspicious => {
-                                    const [x, y] = viewport.project([suspicious.long!, suspicious.lat!, terrainAltRef.current]);
-                                    return (
-                                        <div key={suspicious.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
-                                            <SuspiciousBeacon
-                                                alert={suspicious}
-                                                onClick={() => handleAlertClick(suspicious, 'yellow')}
-                                            />
-                                        </div>
-                                    );
-                                })}
-
-                            {/* Blue Beacons - CCTV Cameras */}
-                            {currentLayer === 2 && beaconFilters.blue && cctvCameras
-                                .filter(c => c.lat && c.long)
-                                .map(camera => {
-                                    const [x, y] = viewport.project([camera.long, camera.lat, terrainAltRef.current]);
-                                    return (
-                                        <div key={camera.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
-                                            <CCTVBeacon
-                                                camera={camera}
-                                                onClick={() => handleAlertClick(camera, 'blue')}
-                                            />
-                                        </div>
-                                    );
-                                })}
-
-                            {/* Purple Beacons - User Reported Crimes */}
-                            {currentLayer === 2 && beaconFilters.purple && userReportedCrimes
-                                .filter(r => r.lat && r.long)
-                                .map(report => {
-                                    const [x, y] = viewport.project([report.long, report.lat, terrainAltRef.current]);
-                                    return (
-                                        <div key={report.id} style={{ position: 'absolute', left: x, top: y, pointerEvents: 'auto' }}>
-                                            <ReportBeacon
-                                                report={report}
-                                                onClick={() => handleAlertClick(report, 'purple')}
-                                            />
-                                        </div>
-                                    );
-                                })}
-                        </>
-                    );
-                }}
-            </DeckGL>
+                getCursor={({ isHovering }) => isHovering ? 'pointer' : 'grab'}
+            />
 
             {/* Layer Navigation Breadcrumb */}
             <LayerBreadcrumb currentLayer={currentLayer} onLayerChange={handleLayerChange} />
@@ -458,6 +547,7 @@ export default function GodView({ onAlertClick }: GodViewProps) {
                     </div>
                 </div>
             )}
+
         </div>
     );
 }
