@@ -2,9 +2,17 @@ import time
 import subprocess
 import threading
 import os
+import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from detector import Detector
+
+# On macOS ffmpeg is bundled via imageio-ffmpeg; on Linux use system ffmpeg
+if sys.platform == "darwin":
+    import imageio_ffmpeg
+    FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+else:
+    FFMPEG_BIN = "ffmpeg"
 
 load_dotenv()
 
