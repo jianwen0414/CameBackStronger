@@ -4,10 +4,13 @@ Urban Safety Ecosystem API for IoT cameras, mobile AR, and web dashboard.
 """
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated
 import logging
+import httpx
+import os
 
 from config import get_settings, Settings
 from schemas import (
@@ -43,6 +46,8 @@ from database import (
     find_nearby_reported_crimes,
     update_crime_report_validation,
     get_supabase_client,
+    get_person_track,
+    update_cctv_stream_url,
 )
 from validation_pipeline import process_crime_report
 
@@ -89,6 +94,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve edge evidence clips for dev
+_edge_evidence = os.path.join(os.path.dirname(__file__), "..", "edge", "evidence")
+if os.path.isdir(_edge_evidence):
+    app.mount("/evidence", StaticFiles(directory=_edge_evidence), name="evidence")
+_edge_clips = os.path.join(os.path.dirname(__file__), "..", "edge", "clips")
+if os.path.isdir(_edge_clips):
+    app.mount("/clips", StaticFiles(directory=_edge_clips), name="clips")
+
 
 # ============================================================================
 # Health Check
@@ -133,7 +146,9 @@ async def receive_cctv_alert(alert: CCTVAlertRequest):
                 lat=alert.lat,
                 long=alert.long,
                 activity_type=alert.type.value,
-                evidence_url=alert.gcs_url
+                evidence_url=alert.gcs_url,
+                person_id_hash=alert.person_id_hash,
+                location_id=alert.location_id
             )
             
             return AlertCreatedResponse(
@@ -291,6 +306,7 @@ async def list_cctv_cameras():
                 location_name=c.get("location_name"),
                 lat=c.get("lat", 0),
                 long=c.get("long", 0),
+                altitude=c.get("altitude"),
                 stream_url=c.get("stream_url"),
                 is_active=c.get("is_active", True),
                 last_heartbeat=c.get("last_heartbeat"),
@@ -313,10 +329,22 @@ async def create_cctv_camera(camera: CCTVCreateRequest):
             location_name=camera.location_name,
             stream_url=camera.stream_url,
             zone_id=camera.zone_id,
+            altitude=camera.altitude,
         )
         return {"success": True, "camera_id": result.get("id", "unknown"), "message": "CCTV camera registered"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to register CCTV camera: {str(e)}")
+
+
+@app.patch("/cctv/cameras/{camera_name}", tags=["CCTV"])
+async def patch_cctv_camera(camera_name: str, body: dict):
+    """Update stream_url for an existing CCTV camera."""
+    stream_url = body.get("stream_url")
+    try:
+        result = await update_cctv_stream_url(camera_name, stream_url)
+        return {"success": True, "camera": result}
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.get("/cctv/nearby", tags=["CCTV"])
@@ -331,6 +359,61 @@ async def get_nearby_cctv(
         return {"cameras": cameras, "total_count": len(cameras)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to find nearby CCTV: {str(e)}")
+
+
+@app.get("/cctv/elevation", tags=["CCTV"])
+async def get_elevation(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    long: Annotated[float, Query(ge=-180, le=180)],
+    settings: Settings = Depends(get_settings),
+):
+    """Proxy Google Elevation API — returns terrain altitude in metres for a lat/long."""
+    if not settings.google_maps_api_key:
+        raise HTTPException(status_code=503, detail="GOOGLE_MAPS_API_KEY not configured")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://maps.googleapis.com/maps/api/elevation/json",
+                params={"locations": f"{lat},{long}", "key": settings.google_maps_api_key},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        if data.get("status") != "OK" or not data.get("results"):
+            raise HTTPException(status_code=502, detail=f"Elevation API error: {data.get('status')}")
+        return {"elevation": round(data["results"][0]["elevation"], 2)}
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Elevation API request failed: {str(e)}")
+
+
+# ============================================================================
+# ReID Person Tracking Endpoints
+# ============================================================================
+
+@app.get("/reid/track/{person_id}", tags=["ReID"])
+async def track_person(person_id: int):
+    """
+    Get cross-camera movement timeline for a weapon holder.
+    Returns chronological list of sightings with camera details and evidence videos.
+    Includes photo_url and snapshot_url derived from edge-saved images.
+    """
+    try:
+        sightings = await get_person_track(person_id)
+        base = os.getenv("BACKEND_URL", "http://localhost:8000")
+        # Derive photo URLs from person_id (saved by edge on first appearance)
+        photo_url = f"{base}/evidence/person_{person_id}.jpg"
+        snapshot_url = f"{base}/evidence/snapshot_{person_id}.jpg"
+        # Infer weapon type from first sighting
+        weapon_type = sightings[0].get("activity_type", "weapon") if sightings else "weapon"
+        return {
+            "person_id": person_id,
+            "sighting_count": len(sightings),
+            "photo_url": photo_url,
+            "snapshot_url": snapshot_url,
+            "weapon_type": weapon_type,
+            "sightings": sightings,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracking data: {str(e)}")
 
 
 # ============================================================================

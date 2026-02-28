@@ -7,12 +7,13 @@ import { motion } from 'framer-motion';
 import { Map, BarChart3, Bell, Settings, Shield } from 'lucide-react';
 import GodView from './components/GodView';
 import AnalyticsPanel from './components/AnalyticsPanel';
+import SettingsPanel from './components/SettingsPanel';
 import EvidenceModal from './components/EvidenceModal';
 import { useAlertStore } from './store/useAlertStore';
 import type { ImmediateDanger, SuspiciousLog, CCTVCamera, UserReportedCrime, BeaconType } from './lib/supabase';
 import { Landing } from './pages/Landing';
 
-type Tab = 'godview' | 'analytics';
+type Tab = 'godview' | 'analytics' | 'settings';
 type View = 'landing' | 'dashboard';
 
 function App() {
@@ -88,8 +89,17 @@ function App() {
             </button>
 
             {/* Settings */}
-            <button className="p-2 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
-              <Settings className="w-5 h-5 text-gray-400 hover:text-white transition-colors" />
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`p-2 rounded-lg transition-colors border ${
+                activeTab === 'settings'
+                  ? 'bg-white/10 border-white/10'
+                  : 'hover:bg-white/5 border-transparent hover:border-white/10'
+              }`}
+            >
+              <Settings className={`w-5 h-5 transition-colors ${
+                activeTab === 'settings' ? 'text-white' : 'text-gray-400 hover:text-white'
+              }`} />
             </button>
           </div>
         </div>
@@ -121,6 +131,19 @@ function App() {
           className="absolute inset-0 overflow-hidden"
         >
           <AnalyticsPanel />
+        </motion.div>
+
+        {/* Settings */}
+        <motion.div
+          initial={false}
+          animate={{
+            opacity: activeTab === 'settings' ? 1 : 0,
+            pointerEvents: activeTab === 'settings' ? 'auto' : 'none'
+          }}
+          transition={{ duration: 0.3 }}
+          className="absolute inset-0 overflow-hidden"
+        >
+          <SettingsPanel />
         </motion.div>
       </main>
 

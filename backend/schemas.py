@@ -75,9 +75,9 @@ class CCTVAlertRequest(BaseModel):
     @field_validator("gcs_url")
     @classmethod
     def validate_gcs_url(cls, v: str) -> str:
-        """Ensure URL is a valid GCS path."""
-        if not (v.startswith("gs://") or v.startswith("https://storage.googleapis.com/")):
-            raise ValueError("Must be a valid GCS URL (gs:// or https://storage.googleapis.com/)")
+        """Ensure URL is a valid evidence path (GCS or local dev)."""
+        if not (v.startswith("gs://") or v.startswith("https://storage.googleapis.com/") or v.startswith("http")):
+            raise ValueError("Must be a valid URL (gs://, https://storage.googleapis.com/, or http(s)://)")
         return v
 
 
@@ -110,6 +110,7 @@ class CCTVCreateRequest(BaseModel):
     location_name: Optional[str] = Field(None, description="Human-readable location")
     lat: float = Field(..., ge=-90, le=90, description="Latitude coordinate")
     long: float = Field(..., ge=-180, le=180, description="Longitude coordinate")
+    altitude: float = Field(..., ge=0, le=10000, description="Altitude in meters above sea level for 3D map projection")
     stream_url: Optional[str] = Field(None, description="URL for live stream or sample video")
     zone_id: Optional[str] = Field(None, description="Zone grouping identifier")
 
@@ -200,6 +201,7 @@ class CCTVCameraResponse(BaseModel):
     location_name: Optional[str] = None
     lat: float
     long: float
+    altitude: Optional[float] = None
     stream_url: Optional[str] = None
     is_active: bool
     last_heartbeat: Optional[datetime] = None
